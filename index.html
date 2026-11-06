@@ -16,17 +16,46 @@
 
 <main class="wrap">
   <section class="card" id="sec-setting">
-    <h2><span class="num">1</span> 설정</h2>
-    <div class="grid2">
-      <label>Anthropic API 키
-        <input type="password" id="apiKey" placeholder="sk-ant-..." autocomplete="off">
-      </label>
-      <label>모델
-        <input type="text" id="model" value="claude-sonnet-5-5" list="modelList"><datalist id="modelList"><option value="claude-sonnet-5-5"><option value="claude-opus-5-5"><option value="claude-haiku-5-5"><option value="claude-fable-5-1"></datalist>
-      </label>
+    <h2><span class="num">1</span> AI 연결 방식</h2>
+    <div class="modes" role="radiogroup">
+      <label class="mode"><input type="radio" name="mode" value="anthropic">
+        <span><strong>Anthropic API</strong><small>자동 작성 · 사용량만큼 API 요금(유료)</small></span></label>
+      <label class="mode"><input type="radio" name="mode" value="manual">
+        <span><strong>Claude 앱 (구독)</strong><small>복사→claude.ai에 붙여넣기→답 붙여넣기 · 추가 비용 없음</small></span></label>
+      <label class="mode"><input type="radio" name="mode" value="gemini">
+        <span><strong>Google Gemini (무료)</strong><small>자동 작성 · 하루 사용량 제한 · 비공개 자료 주의</small></span></label>
     </div>
-    <label class="check"><input type="checkbox" id="rememberKey"> 이 PC 브라우저에 키 저장 (다른 사람과 같이 쓰는 PC에서는 체크하지 마세요)</label>
-    <p class="hint">키는 이 브라우저에서 Anthropic API로만 직접 전송되고, 다른 서버에는 저장되지 않습니다.</p>
+
+    <div class="mode-pane" data-pane="anthropic">
+      <div class="grid2">
+        <label>Anthropic API 키
+          <input type="password" id="apiKey" placeholder="sk-ant-..." autocomplete="off">
+        </label>
+        <label>모델
+          <input type="text" id="model" value="claude-sonnet-5-5" list="modelList"><datalist id="modelList"><option value="claude-sonnet-5-5"><option value="claude-opus-5-5"><option value="claude-haiku-5-5"><option value="claude-fable-5-1"></datalist>
+        </label>
+      </div>
+      <p class="hint">키 발급: platform.claude.com → Billing에서 크레딧 충전 → API Keys → Create Key</p>
+    </div>
+
+    <div class="mode-pane" data-pane="manual">
+      <p class="hint" style="margin-top:0">「등록서류 작성」을 누르면 작성 요청문이 만들어집니다. ① <b>요청문 복사</b> → ② claude.ai 새 대화에 붙여넣기 → ③ Claude의 답을 그대로 복사해 <b>답변 붙여넣기</b> 칸에 넣고 「적용」을 누르면 엑셀·증빙자료가 만들어집니다. 한 번에 3~5개 항목 정도가 적당합니다.</p>
+    </div>
+
+    <div class="mode-pane" data-pane="gemini">
+      <div class="grid2">
+        <label>Gemini API 키
+          <input type="password" id="geminiKey" placeholder="AIza..." autocomplete="off">
+        </label>
+        <label>모델
+          <input type="text" id="geminiModel" value="gemini-3.8-flash" list="gModelList"><datalist id="gModelList"><option value="gemini-3.8-flash"><option value="gemini-3.6-flash"><option value="gemini-3.5-flash-lite"></datalist>
+        </label>
+      </div>
+      <p class="hint">키 발급: aistudio.google.com → Get API key (구글 계정, 무료). <b style="color:var(--err)">무료 사용분은 올린 내용이 구글 제품 개선에 쓰일 수 있으니 고객사 비공개 시험보고서는 올리지 마세요.</b></p>
+    </div>
+
+    <label class="check key-only"><input type="checkbox" id="rememberKey"> 이 PC 브라우저에 키 저장 (다른 사람과 같이 쓰는 PC에서는 체크하지 마세요)</label>
+    <p class="hint key-only">키는 이 브라우저에서 해당 AI 회사로만 직접 전송되고, 다른 서버에는 저장되지 않습니다.</p>
   </section>
 
   <section class="card">

@@ -30,7 +30,16 @@
   async function init() {
     const k = store.get("regdoc.apiKey");
     if (k) { $("apiKey").value = k; $("rememberKey").checked = true; }
+    const gk = store.get("regdoc.geminiKey");
+    if (gk) { $("geminiKey").value = gk; $("rememberKey").checked = true; }
     const m = store.get("regdoc.model"); if (m) $("model").value = m;
+    const gm = store.get("regdoc.geminiModel"); if (gm) $("geminiModel").value = gm;
+    const mode = store.get("regdoc.mode") || "anthropic";
+    (document.querySelector(`input[name=mode][value="${mode}"]`) || document.querySelector("input[name=mode]")).checked = true;
+    document.querySelectorAll("input[name=mode]").forEach((r) => r.addEventListener("change", () => { store.set("regdoc.mode", getMode()); showMode(); }));
+    showMode();
+    $("geminiKey").addEventListener("change", saveKey);
+    $("geminiModel").addEventListener("change", () => store.set("regdoc.geminiModel", $("geminiModel").value.trim()));
     const t = store.get("regdoc.tonnage"); if (t) $("tonnage").value = t;
     $("apiKey").addEventListener("change", saveKey);
     $("rememberKey").addEventListener("change", saveKey);
@@ -52,8 +61,16 @@
   }
 
   function saveKey() {
-    if ($("rememberKey").checked) store.set("regdoc.apiKey", $("apiKey").value.trim());
-    else store.del("regdoc.apiKey");
+    if ($("rememberKey").checked) {
+      store.set("regdoc.apiKey", $("apiKey").value.trim());
+      store.set("regdoc.geminiKey", $("geminiKey").value.trim());
+    } else { store.del("regdoc.apiKey"); store.del("regdoc.geminiKey"); }
+  }
+  const getMode = () => (document.querySelector("input[name=mode]:checked") || {}).value || "anthropic";
+  function showMode() {
+    const m = getMode();
+    document.querySelectorAll(".mode-pane").forEach((p) => p.classList.toggle("hidden", p.dataset.pane !== m));
+    document.querySelectorAll(".key-only").forEach((p) => p.classList.toggle("hidden", m === "manual"));
   }
 
   // ---------------- 시험항목 선택 패널 ----------------
@@ -191,8 +208,10 @@
 
   // ---------------- 실행 ----------------
   async function run() {
-    const key = $("apiKey").value.trim();
-    if (!key) { alert("1번 설정에 Anthropic API 키를 입력하세요."); $("apiKey").focus(); return; }
+    const mode = getMode();
+    const key = mode === "gemini" ? $("geminiKey").value.trim() : $("apiKey").value.trim();
+    if (mode === "anthropic" && !key) { alert("1번 설정에 Anthropic API 키를 입력하세요."); $("apiKey").focus(); return; }
+    if (mode === "gemini" && !key) { alert("1번 설정에 Gemini API 키를 입력하세요."); $("geminiKey").focus(); return; }
     const ok = files.filter((f) => !f.loading && !f.error);
     tasks = [...selection.entries()].sort((a, b) => a[0] - b[0]).map(([no, type]) => {
       const cat = CONFIG.catalog.find((c) => c.no === no);
@@ -200,13 +219,15 @@
       return { id: `t${no}`, no, type, cat, item, sheet: CONFIG.sheets[item.key], status: "wait", values: {}, evidence: {}, notes: "" };
     });
     $("log").innerHTML = "";
+    const oldBox = $("manualBox"); if (oldBox) oldBox.remove();
     $("runBtn").disabled = true;
     renderResults(ok);
     $("sec-result").classList.remove("hidden");
     try {
       const keywords = [...new Set(tasks.flatMap((t) => t.item.keywords))];
-      const { content, sentInfo } = buildDocuments(ok, keywords);
+      const { content, sentInfo, manualAttach } = buildDocuments(ok, keywords, mode);
       sentInfo.forEach((s) => log(s));
+      if (mode === "manual") { renderManual(content, ok, manualAttach); return; }
       // 같은 자료를 여러 항목에 반복 전송하므로 캐시 표시(비용·시간 절감)
       if (content.length) content[content.length - 1].cache_control = { type: "ephemeral" };
       log(`${tasks.length}개 항목 작성을 시작합니다. 항목당 보통 1~3분 걸립니다.`);
@@ -214,10 +235,10 @@
       const worker = async () => {
         while (queue.length) {
           const t = queue.shift();
-          await runTask(t, key, content, ok);
+          await runTask(t, mode, key, content, ok);
         }
       };
-      await Promise.all(Array.from({ length: Math.min(PARALLEL, tasks.length) }, worker));
+      await Promise.all(Array.from({ length: Math.min(mode === "gemini" ? 1 : PARALLEL, tasks.length) }, worker));
       const done = tasks.filter((t) => t.status === "ok").length;
       log(`완료: ${done}/${tasks.length}개 항목. 아래에서 확인 후 다운로드하세요.`, done === tasks.length ? "ok" : "err");
     } catch (e) {
@@ -228,13 +249,27 @@
     }
   }
 
-  async function runTask(t, key, docContent, ok) {
+  async function runTask(t, mode, key, docContent, ok) {
     t.status = "run"; updateTaskHead(t);
     const t0 = Date.now();
     try {
       const prompt = buildPrompt(t, ok);
-      const text = await callClaude(key, $("model").value.trim(), SYSTEM_PROMPT, [...docContent, { type: "text", text: prompt }]);
-      const json = parseJson(text);
+      const msg = [...docContent, { type: "text", text: prompt }];
+      const text = mode === "gemini"
+        ? await callGemini(key, $("geminiModel").value.trim(), SYSTEM_PROMPT, msg)
+        : await callClaude(key, $("model").value.trim(), SYSTEM_PROMPT, msg);
+      applyJson(t, parseJson(text), ok);
+      log(`✔ ${t.no}. ${t.cat.name} (${DOCNAME[t.type]}) — ${Math.round((Date.now() - t0) / 1000)}초`, "ok");
+    } catch (e) {
+      console.error(e);
+      t.status = "err"; t.error = e.message;
+      log(`✖ ${t.no}. ${t.cat.name}: ${e.message}`, "err");
+    }
+    renderTaskBody(t, ok);
+  }
+
+  function applyJson(t, json, ok) {
+      t.values = {}; t.evidence = {};
       for (const f of t.sheet.fields) {
         let v = json.fields && Object.prototype.hasOwnProperty.call(json.fields, f.cell) ? json.fields[f.cell] : undefined;
         if (v === undefined || v === null) v = f.default ?? "";
@@ -250,16 +285,10 @@
       }
       t.notes = json.notes || "";
       t.status = "ok";
-      log(`✔ ${t.no}. ${t.cat.name} (${DOCNAME[t.type]}) — ${Math.round((Date.now() - t0) / 1000)}초`, "ok");
-    } catch (e) {
-      console.error(e);
-      t.status = "err"; t.error = e.message;
-      log(`✖ ${t.no}. ${t.cat.name}: ${e.message}`, "err");
-    }
-    renderTaskBody(t, ok);
   }
 
-  function buildDocuments(list, keywordList) {
+  function buildDocuments(list, keywordList, mode) {
+    const manualAttach = [];
     const kw = [...keywordList, $("chemName").value.trim(), $("cas").value.trim()].filter(Boolean).map((k) => k.toLowerCase());
     const content = [], sentInfo = [];
     const textFiles = list.filter((f) => !f.scanned);
@@ -270,6 +299,12 @@
       if (f.scanned) {
         if (f.bytes.byteLength > 30 * 1024 * 1024 || f.numPages > 100) {
           sentInfo.push(`⚠ 문서 ${no} "${f.name}"은 스캔본이며 너무 커서(30MB/100쪽 초과) 제외했습니다. 필요한 부분만 잘라 올려 주세요.`);
+          return;
+        }
+        if (mode === "manual") {
+          manualAttach.push(f.name);
+          content.push({ type: "text", text: `<문서 ${no}: ${f.name} (총 ${f.numPages}쪽, 스캔본 PDF — 이 대화에 파일로 첨부됨. 쪽 번호는 PDF의 물리적 쪽 순서)>` });
+          sentInfo.push(`문서 ${no} "${f.name}": 스캔본이라 글자를 읽을 수 없습니다. claude.ai 대화창에 이 PDF를 직접 첨부하세요.`);
           return;
         }
         content.push({ type: "text", text: `<문서 ${no}: ${f.name} (총 ${f.numPages}쪽, 스캔본 PDF 원본 첨부 — 쪽 번호는 PDF의 물리적 쪽 순서)>` });
@@ -297,7 +332,7 @@
       const body = selected.map((x) => `[p.${x.p}]${f.names[x.p - 1] && f.kind !== "pdf" ? ` (${f.names[x.p - 1]})` : ""}\n${x.t}`).join("\n\n");
       content.push({ type: "text", text: `<문서 ${no}: ${f.name} (${unitHeader(f)})>\n${body}\n</문서 ${no}>` });
     });
-    return { content, sentInfo };
+    return { content, sentInfo, manualAttach };
   }
 
   function b64(buf) {
@@ -388,6 +423,108 @@ ${lines}
     return (data.content || []).filter((c) => c.type === "text").map((c) => c.text).join("");
   }
 
+  async function callGemini(key, model, system, content) {
+    const parts = content.map((c) => c.type === "document"
+      ? { inline_data: { mime_type: c.source.media_type, data: c.source.data } }
+      : { text: c.text });
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model || "gemini-3.8-flash")}:generateContent`;
+    let res;
+    for (let attempt = 0; attempt < 3; attempt++) {
+      try {
+        res = await fetch(url, {
+          method: "POST",
+          headers: { "content-type": "application/json", "x-goog-api-key": key },
+          body: JSON.stringify({
+            systemInstruction: { parts: [{ text: system }] },
+            contents: [{ role: "user", parts }],
+            generationConfig: { responseMimeType: "application/json", maxOutputTokens: 16000, temperature: 0.2 },
+          }),
+        });
+      } catch (e) {
+        throw new Error("Gemini API에 연결하지 못했습니다. 인터넷/사내 방화벽을 확인하세요. (" + e.message + ")");
+      }
+      if ((res.status === 429 || res.status === 503 || res.status >= 500) && attempt < 2) {
+        log(`Gemini 사용량 제한/혼잡으로 ${20 * (attempt + 1)}초 뒤 다시 시도합니다…`);
+        await new Promise((r) => setTimeout(r, 20000 * (attempt + 1)));
+        continue;
+      }
+      break;
+    }
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      const m = (data.error && data.error.message) || res.statusText;
+      if (res.status === 400 && /API key/i.test(m)) throw new Error("Gemini API 키가 올바르지 않습니다. (" + m + ")");
+      if (res.status === 403) throw new Error("Gemini API 키 권한 오류입니다. (" + m + ")");
+      if (res.status === 404) throw new Error("Gemini 모델 이름을 확인하세요: " + model + " (" + m + ")");
+      if (res.status === 429) throw new Error("Gemini 무료 사용량을 초과했습니다. 잠시 후(또는 내일) 다시 시도하세요. (" + m + ")");
+      throw new Error(`Gemini 오류 ${res.status}: ${m}`);
+    }
+    const cand = (data.candidates || [])[0];
+    if (!cand) throw new Error("Gemini가 응답을 거부했습니다. " + JSON.stringify(data.promptFeedback || {}));
+    if (cand.finishReason === "MAX_TOKENS") log("⚠ 응답이 길어 일부가 잘렸을 수 있습니다.", "err");
+    return ((cand.content && cand.content.parts) || []).map((p) => p.text || "").join("");
+  }
+
+  // ---------------- Claude 앱(구독) 모드: 복사 → 붙여넣기 ----------------
+  function buildManualText(content, ok) {
+    const sys = SYSTEM_PROMPT.split("[출력 형식]")[0];
+    const docs = content.filter((c) => c.type === "text").map((c) => c.text).join("\n\n");
+    const items = tasks.map((t) => `\n==================== 항목 ${t.no} ====================\n${buildPrompt(t, ok).replace(/\n위 입력칸을 모두 검토해[\s\S]*$/, "")}`).join("\n");
+    return `${sys}
+[출력 형식] 아래 JSON 하나만 출력한다. 다른 설명이나 코드블록 표시는 쓰지 않는다. 항목이 많아 답이 길어지면 끝까지 이어서 출력한다.
+{"items": {"항목번호": {"fields": {"셀주소": "값", ...}, "evidence": [{"file": 문서번호, "pages": [번호, ...]}], "notes": "검토 필요사항"}, ...}}
+작성할 항목번호: ${tasks.map((t) => t.no).join(", ")}
+
+==================== 자료 ====================
+${docs}
+${items}
+
+모든 항목을 위 [출력 형식]의 JSON 하나로 답하라.`;
+  }
+
+  function renderManual(content, ok, attach) {
+    const text = buildManualText(content, ok);
+    tasks.forEach((t) => { t.status = "wait"; updateTaskHead(t); });
+    const box = document.createElement("div");
+    box.className = "manual-box"; box.id = "manualBox";
+    box.innerHTML = `<h3>Claude 앱으로 작성 (${tasks.length}개 항목 · 요청문 ${text.length.toLocaleString()}자)</h3>
+      <div class="steps">
+        <button class="primary" id="mCopy">① 요청문 복사</button>
+        <a href="https://claude.ai/new" target="_blank" rel="noopener"><button type="button">② claude.ai 새 대화 열기</button></a>
+        <button id="mSave">요청문 파일로 저장(.txt)</button>
+      </div>
+      ${attach.length ? `<p class="warn-list">⚠ 스캔본이라 글자를 못 읽은 파일 — claude.ai 대화창에 직접 첨부하세요: ${attach.map(esc).join(", ")}</p>` : ""}
+      ${text.length > 150000 ? `<p class="warn-list">⚠ 요청문이 깁니다. 붙여넣기가 안 되면 ‘파일로 저장’한 .txt를 대화창에 첨부하세요.</p>` : ""}
+      <label>③ Claude의 답을 전부 복사해 여기에 붙여넣기
+        <textarea id="mAnswer" placeholder='{"items": {...}} 형태의 답변'></textarea></label>
+      <div class="steps" style="margin-top:8px"><button class="primary" id="mApply">④ 적용</button><span class="hint" id="mMsg"></span></div>`;
+    const old = $("manualBox"); if (old) old.remove();
+    $("results").before(box);
+    $("mCopy").addEventListener("click", async () => {
+      try { await navigator.clipboard.writeText(text); $("mCopy").textContent = "✔ 복사됨 — claude.ai에 붙여넣으세요"; }
+      catch (e) { save(new Blob(["\ufeff" + text], { type: "text/plain" }), "작성요청문.txt"); alert("클립보드 복사가 막혀 있어 파일로 저장했습니다. 이 파일을 대화창에 첨부하세요."); }
+    });
+    $("mSave").addEventListener("click", () => save(new Blob(["\ufeff" + text], { type: "text/plain" }), `작성요청문_${substId()}.txt`));
+    $("mApply").addEventListener("click", () => {
+      try {
+        const json = parseJson($("mAnswer").value);
+        const items = json.items || (tasks.length === 1 && json.fields ? { [tasks[0].no]: json } : null);
+        if (!items) throw new Error("답변에 items가 없습니다. Claude의 답 전체를 붙여넣었는지 확인하세요.");
+        let n = 0;
+        for (const t of tasks) {
+          const it = items[t.no] || items[String(t.no)];
+          if (it) { applyJson(t, it, ok); n++; }
+          else if (t.status !== "ok") { t.status = "err"; t.error = "답변에 이 항목이 없습니다. Claude에게 '항목 " + t.no + "도 이어서 작성해줘'라고 요청한 뒤 다시 붙여넣으세요."; }
+          renderTaskBody(t, ok);
+        }
+        $("mMsg").textContent = `${n}/${tasks.length}개 항목 적용됨`;
+        log(`Claude 앱 답변 적용: ${n}/${tasks.length}개 항목`, n === tasks.length ? "ok" : "err");
+      } catch (e) { $("mMsg").textContent = ""; alert(e.message); }
+    });
+    log("요청문을 만들었습니다. 4번 결과 칸의 ①~④ 순서대로 진행하세요.", "ok");
+    $("sec-result").scrollIntoView({ behavior: "smooth" });
+  }
+
   function parseJson(text) {
     const a = text.indexOf("{"), b = text.lastIndexOf("}");
     if (a < 0 || b < 0) throw new Error("AI 응답에서 결과(JSON)를 찾지 못했습니다.");
@@ -396,7 +533,7 @@ ${lines}
   }
 
   // ---------------- 결과 화면 ----------------
-  const STATUS = { wait: ["대기", "wait"], run: ["작성 중…", "wait"], ok: ["완료", "ok"], err: ["오류", "err"] };
+  const STATUS = { wait: ["대기 중", "wait"], run: ["작성 중…", "wait"], ok: ["완료", "ok"], err: ["오류", "err"] };
 
   function renderResults(ok) {
     $("results").innerHTML = tasks.map((t) => `<details class="res" id="${t.id}">

@@ -94,3 +94,21 @@ details.res > summary .st.wait { color: var(--muted); }
 details.res .body { padding: 0 14px 14px; }
 details.res .item-dl { display: flex; gap: 8px; flex-wrap: wrap; margin: 8px 0; }
 details.res .item-dl button { padding: 5px 12px; font-size: .85rem; }
+
+/* AI 연결 방식 */
+.modes { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-bottom: 12px; }
+@media (max-width: 760px) { .modes { grid-template-columns: 1fr; } }
+.mode { display: flex; gap: 10px; align-items: flex-start; border: 1px solid var(--line); border-radius: 8px;
+  padding: 10px 12px; cursor: pointer; color: var(--text); }
+.mode:has(input:checked) { border-color: var(--accent); background: var(--accent-2); }
+.mode input { margin-top: 4px; accent-color: var(--accent); }
+.mode span { display: flex; flex-direction: column; }
+.mode small { color: var(--muted); font-size: .8rem; }
+.mode-pane { margin-bottom: 6px; }
+
+/* Claude 앱 모드 */
+.manual-box { border: 1px dashed var(--accent); border-radius: 8px; padding: 12px 14px; margin-bottom: 12px; }
+.manual-box h3 { margin: 0 0 8px; font-size: .95rem; }
+.manual-box .steps { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin-bottom: 8px; }
+.manual-box textarea { min-height: 110px; font-family: ui-monospace, Consolas, monospace; font-size: .8rem; }
+.manual-box .warn-list { color: var(--err); font-size: .84rem; margin: 6px 0; }
