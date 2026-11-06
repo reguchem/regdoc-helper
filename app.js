@@ -25,6 +25,7 @@
   let fileSeq = 0;
   const selection = new Map();  // 항목번호 → "제출" | "면제" | "생략"
   let tasks = [];               // 작성 결과
+  const conds = new Map();      // 면제 항목번호 → 선택한 면제조건 문구 ("" = AI가 판단)
 
   // ---------------- 초기화 ----------------
   async function init() {
@@ -74,20 +75,73 @@
   }
 
   // ---------------- 시험항목 선택 패널 ----------------
+  const catOf = (no) => CONFIG.catalog.find((x) => x.no === no);
+  function exemptOptions(no) {
+    const key = (catOf(no) || {}).types?.["면제"];
+    if (!key) return [];
+    const f = CONFIG.sheets[key].fields.find((x) => x.label === "면제조건");
+    return (f && f.options) || [];
+  }
+  function linkFor(no) {
+    if (selection.get(no) !== "면제" || !conds.get(no)) return null;
+    return (CONFIG.links || []).find((l) => l.target === no && l.option === conds.get(no)) || null;
+  }
+  function linkedSources() {           // 근거 항목번호 → 이를 근거로 쓰는 면제 항목들
+    const m = new Map();
+    for (const no of selection.keys()) {
+      const l = linkFor(no);
+      if (l) for (const s of l.sources) { if (!m.has(s)) m.set(s, []); m.get(s).push(no); }
+    }
+    return m;
+  }
+  function unmetLinks() {
+    const out = [];
+    for (const no of selection.keys()) {
+      const l = linkFor(no);
+      if (!l) continue;
+      const usable = l.sources.filter((s) => Object.keys(catOf(s).types).some((t) => t !== "면제"));
+      const chosen = l.sources.filter((s) => selection.has(s) && selection.get(s) !== "면제");
+      const ok = l.mode === "any" ? chosen.length > 0 : usable.every((s) => chosen.includes(s));
+      if (!ok) out.push({ no, need: l.mode === "any" ? usable : usable.filter((s) => !chosen.includes(s)), mode: l.mode });
+    }
+    return out;
+  }
+  const short = (s, n) => (s.length > n ? s.slice(0, n) + "…" : s);
+
   function renderPanels() {
     const tier = +$("tonnage").value;
-    // 톤수 범위를 벗어난 선택은 해제
-    for (const no of [...selection.keys()]) {
-      const c = CONFIG.catalog.find((x) => x.no === no);
-      if (!c || c.tier > tier) selection.delete(no);
+    // 톤수 범위를 벗어난 선택은 해제(면제 근거로 연계된 항목은 유지)
+    for (let pass = 0; pass < 3; pass++) {
+      const linked = linkedSources();
+      for (const no of [...selection.keys()]) {
+        const c = catOf(no);
+        if (!c || (c.tier > tier && !linked.has(no))) { selection.delete(no); conds.delete(no); }
+      }
     }
+    for (const no of [...conds.keys()]) if (selection.get(no) !== "면제") conds.delete(no);
+    const linked = linkedSources();
     $("panels").innerHTML = CONFIG.groups.map((g) => {
-      const rows = CONFIG.catalog.filter((c) => c.file === g.file && c.tier <= tier).map((c) => {
+      const rows = CONFIG.catalog.filter((c) => c.file === g.file && (c.tier <= tier || linked.has(c.no))).map((c) => {
         const has = Object.keys(c.types).length > 0;
         const cells = TYPES.map((t) => c.types[t.key]
           ? `<td class="opt"><input type="radio" name="sel-${c.no}" value="${t.key}" data-no="${c.no}" title="${esc(c.name)} · ${DOCNAME[t.key]}"${selection.get(c.no) === t.key ? " checked" : ""}></td>`
           : `<td class="opt"><span class="dash">–</span></td>`).join("");
-        return `<tr class="${has ? "" : "none"}"><td class="iname"><span class="no">${c.no}</span>${esc(c.name)}</td>${cells}</tr>`;
+        const badge = linked.has(c.no)
+          ? `<span class="link-badge" title="면제 근거로 연계된 항목">근거 → ${linked.get(c.no).join(", ")}번</span>` : "";
+        let html = `<tr class="${has ? "" : "none"}${linked.has(c.no) ? " linked" : ""}"><td class="iname"><span class="no">${c.no}</span>${esc(c.name)}${badge}</td>${cells}</tr>`;
+        if (selection.get(c.no) === "면제") {
+          const opts = exemptOptions(c.no);
+          const cur = conds.get(c.no) || "";
+          const optHtml = [`<option value="">면제조건: AI가 자료를 보고 판단</option>`].concat(opts.map((o) => {
+            const l = (CONFIG.links || []).find((x) => x.target === c.no && x.option === o);
+            const tag = l ? ` [근거: ${l.sources.join(l.mode === "any" ? " 또는 " : "+")}번]` : "";
+            return `<option value="${esc(o)}" title="${esc(o)}"${o === cur ? " selected" : ""}>${esc(short(o, 46))}${tag}</option>`;
+          })).join("");
+          const l = linkFor(c.no);
+          const hint = l ? `<div class="cond-hint">근거 항목 ${l.sources.map((s) => `${s}.${esc(catOf(s).name)}`).join(l.mode === "any" ? " 또는 " : ", ")}의 서류 종류를 선택하세요. 근거 서류를 먼저 작성한 뒤 그 결과로 면제사유서를 씁니다.</div>` : "";
+          html += `<tr class="cond"><td colspan="4">${opts.length ? `<select data-cond="${c.no}">${optHtml}</select>` : `<span class="hint">면제조건 목록 없음 — AI가 자료를 보고 작성</span>`}${hint}</td></tr>`;
+        }
+        return html;
       }).join("");
       return `<div class="panel"><table>
         <thead><tr><th class="pname">${esc(g.label)}</th>${TYPES.map((t) => `<th>${t.label}</th>`).join("")}</tr></thead>
@@ -103,11 +157,23 @@
         if (r.dataset.was === "1") { r.checked = false; selection.delete(no); }
         else selection.set(no, r.value);
         r.dataset.was = "";
-        updateSummary();
+        renderPanels();
       });
     });
+    $("panels").querySelectorAll("select[data-cond]").forEach((sel) => sel.addEventListener("change", () => {
+      const no = +sel.dataset.cond;
+      conds.set(no, sel.value);
+      const l = linkFor(no);
+      if (l) {   // 근거 항목 기본 선택: 국문요약서(없으면 생략사유서)
+        const pick = (s) => { const t = catOf(s).types; if (!selection.has(s) || selection.get(s) === "면제") selection.set(s, t["제출"] ? "제출" : "생략"); };
+        const usable = l.sources.filter((s) => catOf(s).types["제출"] || catOf(s).types["생략"]);
+        if (l.mode === "any") { if (!usable.some((s) => selection.has(s) && selection.get(s) !== "면제") && usable[0]) pick(usable[0]); }
+        else usable.forEach(pick);
+      }
+      renderPanels();
+    }));
     $("panels").querySelectorAll("[data-clear]").forEach((b) => b.addEventListener("click", () => {
-      for (const c of CONFIG.catalog) if (c.file === b.dataset.clear) selection.delete(c.no);
+      for (const c of CONFIG.catalog) if (c.file === b.dataset.clear) { selection.delete(c.no); conds.delete(c.no); }
       renderPanels();
     }));
     updateSummary();
@@ -117,9 +183,10 @@
     const n = selection.size;
     const cnt = { 제출: 0, 면제: 0, 생략: 0 };
     for (const v of selection.values()) cnt[v]++;
-    $("selSummary").textContent = n
+    const warn = unmetLinks().map((u) => `⚠ ${u.no}번 면제 근거로 ${u.need.join(u.mode === "any" ? " 또는 " : ", ")}번의 국문요약서/생략사유서를 선택하세요.`);
+    $("selSummary").innerHTML = (n
       ? `선택 ${n}개 — 국문요약서 ${cnt.제출} · 면제사유서 ${cnt.면제} · 생략사유서 ${cnt.생략}`
-      : "아직 선택한 항목이 없습니다.";
+      : "아직 선택한 항목이 없습니다.") + (warn.length ? `<br><span style="color:var(--err)">${warn.join("<br>")}</span>` : "");
     updateRunBtn();
   }
   function updateRunBtn() {
@@ -213,11 +280,17 @@
     if (mode === "anthropic" && !key) { alert("1번 설정에 Anthropic API 키를 입력하세요."); $("apiKey").focus(); return; }
     if (mode === "gemini" && !key) { alert("1번 설정에 Gemini API 키를 입력하세요."); $("geminiKey").focus(); return; }
     const ok = files.filter((f) => !f.loading && !f.error);
+    const unmet = unmetLinks();
+    if (unmet.length && !confirm(unmet.map((u) => `${u.no}번 면제의 근거 항목(${u.need.join(", ")}번)이 선택되지 않았습니다.`).join("\n") + "\n\n근거 없이 계속할까요?")) return;
     tasks = [...selection.entries()].sort((a, b) => a[0] - b[0]).map(([no, type]) => {
       const cat = CONFIG.catalog.find((c) => c.no === no);
       const item = CONFIG.items.find((i) => i.key === cat.types[type]);
-      return { id: `t${no}`, no, type, cat, item, sheet: CONFIG.sheets[item.key], status: "wait", values: {}, evidence: {}, notes: "" };
+      return { id: `t${no}`, no, type, cat, item, sheet: CONFIG.sheets[item.key], status: "wait", values: {}, evidence: {}, notes: "",
+               cond: type === "면제" ? (conds.get(no) || "") : "", link: linkFor(no) };
     });
+    for (const t of tasks) t.sources = t.link ? tasks.filter((x) => t.link.sources.includes(x.no) && x.type !== "면제") : [];
+    const level = (t, seen = new Set()) => (seen.has(t.no) ? 0 : (seen.add(t.no), t.sources.length ? 1 + Math.max(...t.sources.map((x) => level(x, seen))) : 0));
+    tasks.forEach((t) => { t.level = level(t); });
     $("log").innerHTML = "";
     const oldBox = $("manualBox"); if (oldBox) oldBox.remove();
     $("runBtn").disabled = true;
@@ -230,15 +303,15 @@
       if (mode === "manual") { renderManual(content, ok, manualAttach); return; }
       // 같은 자료를 여러 항목에 반복 전송하므로 캐시 표시(비용·시간 절감)
       if (content.length) content[content.length - 1].cache_control = { type: "ephemeral" };
-      log(`${tasks.length}개 항목 작성을 시작합니다. 항목당 보통 1~3분 걸립니다.`);
-      const queue = [...tasks];
-      const worker = async () => {
-        while (queue.length) {
-          const t = queue.shift();
-          await runTask(t, mode, key, content, ok);
-        }
-      };
-      await Promise.all(Array.from({ length: Math.min(mode === "gemini" ? 1 : PARALLEL, tasks.length) }, worker));
+      log(`${tasks.length}개 항목 작성을 시작합니다. 항목당 보통 1~3분 걸립니다.` + (tasks.some((t) => t.sources.length) ? " 면제 근거 항목을 먼저 작성합니다." : ""));
+      const maxLevel = Math.max(...tasks.map((t) => t.level));
+      for (let lv = 0; lv <= maxLevel; lv++) {
+        const queue = tasks.filter((t) => t.level === lv);
+        const worker = async () => {
+          while (queue.length) await runTask(queue.shift(), mode, key, content, ok);
+        };
+        await Promise.all(Array.from({ length: Math.min(mode === "gemini" ? 1 : PARALLEL, queue.length) }, worker));
+      }
       const done = tasks.filter((t) => t.status === "ok").length;
       log(`완료: ${done}/${tasks.length}개 항목. 아래에서 확인 후 다운로드하세요.`, done === tasks.length ? "ok" : "err");
     } catch (e) {
@@ -285,6 +358,31 @@
       }
       t.notes = json.notes || "";
       t.status = "ok";
+      if (t.type === "면제") {
+        const fc = t.sheet.fields.find((f) => f.label === "면제조건");
+        if (fc && t.cond) t.values[fc.cell] = t.cond;
+        const fa = t.sheet.fields.find((f) => f.label === "첨부 1");
+        const srcDone = (t.sources || []).filter((x) => x.status === "ok");
+        if (fa && srcDone.length) t.values[fa.cell] = srcDone.map(srcLabel).join(", ");
+        for (const x of srcDone) for (const [fid, set] of Object.entries(x.evidence || {})) {
+          if (!t.evidence[fid]) t.evidence[fid] = new Set();
+          set.forEach((p) => t.evidence[fid].add(p));
+        }
+      }
+  }
+  const srcLabel = (x) => `${x.sheet.title || x.cat.name} ${DOCNAME[x.type]}`;
+
+  // 면제사유서에 넘길 근거 서류 요약(채워진 칸만)
+  function sourceSummary(x) {
+    const lines = [];
+    for (const f of x.sheet.fields) {
+      const v = (x.values[f.cell] || "").trim();
+      if (!v || v === String(f.default || "").trim()) continue;
+      lines.push(`  - ${f.label}: ${v.replace(/\n/g, " ")}`);
+    }
+    let s = lines.join("\n");
+    if (s.length > 3500) s = s.slice(0, 3500) + " …";
+    return `■ ${x.no}. ${srcLabel(x)}\n${s}`;
   }
 
   function buildDocuments(list, keywordList, mode) {
@@ -358,7 +456,7 @@
 [출력 형식] 아래 JSON 하나만 출력한다. 다른 설명이나 코드블록 표시는 쓰지 않는다.
 {"fields": {"셀주소": "값", ...}, "evidence": [{"file": 문서번호, "pages": [쪽번호, ...]}], "notes": "검토자가 확인해야 할 사항(자료에서 못 찾은 항목, 판단이 애매한 부분 등)을 한국어로 간단히"}`;
 
-  function buildPrompt(t, list) {
+  function buildPrompt(t, list, manual) {
     const name = $("chemName").value.trim(), cas = $("cas").value.trim();
     const ton = $("tonnage").selectedOptions[0].textContent;
     const lines = t.sheet.fields.map((f) => {
@@ -384,7 +482,24 @@
 [입력칸 목록] (셀주소 | 위치 | 항목 | 선택지 | 기본값 | 작성예시)
 ${lines}
 
+${exemptBlock(t, manual)}
 위 입력칸을 모두 검토해 JSON으로 답하라. fields에는 위 목록의 셀주소를 키로 쓴다. 이 시험항목과 관련 없는 문서 내용은 쓰지 않는다.`;
+  }
+  function exemptBlock(t, manual) {
+    if (t.type !== "면제" || (!t.cond && !(t.sources || []).length)) return "";
+    let s = "\n[면제 작성 조건]\n";
+    if (t.cond) s += `- 면제조건은 다음 문구로 확정되어 있다(그대로 사용): "${t.cond}"\n`;
+    if ((t.sources || []).length) {
+      const names = t.sources.map((x) => `${x.no}. ${srcLabel(x)}`).join(", ");
+      s += `- 면제 근거 자료: ${names}. 근거자료 칸에는 이 서류(시험자료의 출처 포함)를 적고, 결론·요약에는 근거 자료의 시험방법과 주요 결과(예: NOAEL, 판정)를 인용해 면제 사유를 서술한다. 첨부 1에는 "${t.sources.map(srcLabel).join(", ")}"을 쓴다.\n`;
+      if (manual) s += `- 근거 자료의 내용은 이 답변의 항목 ${t.sources.map((x) => x.no).join(", ")} 작성 내용과 일치시킨다.\n`;
+      else {
+        const done = t.sources.filter((x) => x.status === "ok");
+        if (done.length) s += "\n[근거 서류 작성 결과]\n" + done.map(sourceSummary).join("\n") + "\n";
+        else s += "- 근거 서류 작성에 실패했으므로 업로드 문서에서 직접 근거를 찾아 작성하고 notes에 그 사실을 적는다.\n";
+      }
+    }
+    return s;
   }
   const clip = (s, n) => { s = String(s).replace(/\n/g, "⏎"); return s.length > n ? s.slice(0, n) + "…" : s; };
 
@@ -469,7 +584,7 @@ ${lines}
   function buildManualText(content, ok) {
     const sys = SYSTEM_PROMPT.split("[출력 형식]")[0];
     const docs = content.filter((c) => c.type === "text").map((c) => c.text).join("\n\n");
-    const items = tasks.map((t) => `\n==================== 항목 ${t.no} ====================\n${buildPrompt(t, ok).replace(/\n위 입력칸을 모두 검토해[\s\S]*$/, "")}`).join("\n");
+    const items = [...tasks].sort((a, b) => a.level - b.level || a.no - b.no).map((t) => `\n==================== 항목 ${t.no} ====================\n${buildPrompt(t, ok, true).replace(/\n위 입력칸을 모두 검토해[\s\S]*$/, "")}`).join("\n");
     return `${sys}
 [출력 형식] 아래 JSON 하나만 출력한다. 다른 설명이나 코드블록 표시는 쓰지 않는다. 항목이 많아 답이 길어지면 끝까지 이어서 출력한다.
 {"items": {"항목번호": {"fields": {"셀주소": "값", ...}, "evidence": [{"file": 문서번호, "pages": [번호, ...]}], "notes": "검토 필요사항"}, ...}}
@@ -511,7 +626,7 @@ ${items}
         const items = json.items || (tasks.length === 1 && json.fields ? { [tasks[0].no]: json } : null);
         if (!items) throw new Error("답변에 items가 없습니다. Claude의 답 전체를 붙여넣었는지 확인하세요.");
         let n = 0;
-        for (const t of tasks) {
+        for (const t of [...tasks].sort((a, b) => a.level - b.level)) {
           const it = items[t.no] || items[String(t.no)];
           if (it) { applyJson(t, it, ok); n++; }
           else if (t.status !== "ok") { t.status = "err"; t.error = "답변에 이 항목이 없습니다. Claude에게 '항목 " + t.no + "도 이어서 작성해줘'라고 요청한 뒤 다시 붙여넣으세요."; }
@@ -535,64 +650,41 @@ ${items}
   // ---------------- 결과 화면 ----------------
   const STATUS = { wait: ["대기 중", "wait"], run: ["작성 중…", "wait"], ok: ["완료", "ok"], err: ["오류", "err"] };
 
+  // 결과는 내용 없이 항목별 다운로드 버튼만 표시
   function renderResults(ok) {
-    $("results").innerHTML = tasks.map((t) => `<details class="res" id="${t.id}">
-      <summary><strong>${t.no}. ${esc(t.cat.name)}</strong><span>${DOCNAME[t.type]}</span>
-        <span class="hint" style="margin:0">${FILESHORT[t.cat.file]} › ${esc(t.item.sheet)}</span><span class="st"></span></summary>
-      <div class="body"></div></details>`).join("");
-    tasks.forEach(updateTaskHead);
+    $("results").innerHTML = tasks.map((t) => `<div class="res" id="${t.id}">
+      <div class="res-name"><strong>${t.no}. ${esc(t.cat.name)}</strong> <span class="res-doc">${DOCNAME[t.type]}</span>${t.sources.length ? `<span class="link-badge">근거: ${t.sources.map((x) => x.no + "번").join(", ")}</span>` : ""}</div>
+      <span class="st"></span>
+      <div class="res-act"><button data-act="xlsx" disabled>엑셀</button><button data-act="pdf" disabled>증빙자료</button></div>
+    </div>`).join("");
+    for (const t of tasks) {
+      const row = $(t.id);
+      row.querySelector('[data-act="xlsx"]').addEventListener("click", () => downloadTaskXlsx(t));
+      row.querySelector('[data-act="pdf"]').addEventListener("click", () => downloadTaskPdf(t));
+      updateTaskHead(t);
+    }
   }
   function updateTaskHead(t) {
-    const el = document.querySelector(`#${t.id} .st`);
-    if (!el) return;
+    const row = $(t.id);
+    if (!row) return;
+    const el = row.querySelector(".st");
     const [txt, cls] = STATUS[t.status];
     el.textContent = txt; el.className = "st " + cls;
+    el.title = t.status === "err" ? t.error || "" : t.status === "ok" && t.notes ? "AI 검토 메모: " + t.notes : "";
+    if (t.status === "ok" && t.notes) el.textContent = "완료 · 검토 메모 있음";
+    const done = t.status === "ok";
+    row.querySelector('[data-act="xlsx"]').disabled = !done;
+    row.querySelector('[data-act="pdf"]').disabled = !done || !hasEvidence(t);
   }
-
-  function renderTaskBody(t, ok) {
-    updateTaskHead(t);
-    const body = document.querySelector(`#${t.id} .body`);
-    if (t.status === "err") { body.innerHTML = `<p style="color:var(--err)">${esc(t.error)}</p>`; return; }
-    let rows = "", lastSec = null;
-    t.sheet.fields.forEach((f, i) => {
-      const sec = f.section || "";
-      if (sec && sec !== lastSec) { rows += `<tr class="sec"><td colspan="3">${esc(sec)}</td></tr>`; lastSec = sec; }
-      const v = t.values[f.cell] ?? "";
-      const lid = `${t.id}-dl${i}`;
-      const dl = f.options && f.options.length ? `<datalist id="${lid}">${f.options.map((o) => `<option value="${esc(o)}">`).join("")}</datalist>` : "";
-      const input = f.options && f.options.length && !f.tall && v.length < 120 && !v.includes("\n")
-        ? `<input type="text" list="${lid}" data-cell="${f.cell}" value="${esc(v)}">${dl}`
-        : `<textarea data-cell="${f.cell}" rows="${Math.min(10, Math.max(1, Math.ceil(v.length / 60) + (v.match(/\n/g) || []).length))}">${esc(v)}</textarea>`;
-      rows += `<tr><td class="cell">${f.cell}</td><td class="lbl">${esc(f.label)}${f.sub ? `<small>${esc(f.sub)}</small>` : ""}</td><td>${input}</td></tr>`;
-    });
-    const ev = ok.map((f) => {
-      const pages = [...(t.evidence[f.id] || [])].sort((a, b) => a - b);
-      const unit = f.kind === "docx" && f.approx === "chunk" ? "구간" : UNIT[f.kind];
-      const note = f.kind === "pdf" ? "" : " — 원본 파일이 첨부되고 인용 위치는 발췌안내.txt에 적힘";
-      return `<label style="margin-top:6px">${esc(f.name)} (${KINDNAME[f.kind]}, 총 ${f.numPages}${unit}${note})<input type="text" data-file="${f.id}" value="${pages.join(", ")}" placeholder="인용하지 않은 문서는 비워 두면 제외"></label>`;
-    }).join("");
-    body.innerHTML = `
-      ${t.notes ? `<div class="notes">AI 검토 메모\n${esc(t.notes)}</div>` : ""}
-      <div class="item-dl"><button data-act="xlsx">이 항목 엑셀</button><button data-act="pdf">이 항목 증빙자료</button></div>
-      <div class="evidence"><strong>증빙자료 발췌 위치</strong> (PDF는 표지 1쪽 자동 포함, 수정 가능 · 예: 1, 12-14)${ev}</div>
-      <div class="table-wrap"><table><thead><tr><th>셀</th><th>항목</th><th>값</th></tr></thead><tbody>${rows}</tbody></table></div>`;
-    body.querySelectorAll("[data-cell]").forEach((el) => { el.addEventListener("input", () => checkOption(t, el)); checkOption(t, el); });
-    body.querySelector('[data-act="xlsx"]').addEventListener("click", () => downloadTaskXlsx(t));
-    body.querySelector('[data-act="pdf"]').addEventListener("click", () => downloadTaskPdf(t));
-  }
-  function checkOption(t, el) {
-    const f = t.sheet.fields.find((x) => x.cell === el.dataset.cell);
-    const v = el.value.trim();
-    const bad = f.options && f.options.length && v && !f.options.includes(v) && !/^other/i.test(v) && !/^기타/.test(v);
-    el.classList.toggle("warn", !!bad);
-  }
+  function renderTaskBody(t) { updateTaskHead(t); }
+  const hasEvidence = (t) => Object.values(t.evidence || {}).some((set) => set.size);
 
   function collectValues(t) {
     const vals = {};
-    document.querySelectorAll(`#${t.id} [data-cell]`).forEach((el) => {
-      const f = t.sheet.fields.find((x) => x.cell === el.dataset.cell);
-      if (el.value !== (f.default ?? "")) vals[f.cell] = el.value;
-    });
+    for (const f of t.sheet.fields) {
+      const v = t.values[f.cell];
+      if (v !== undefined && v !== (f.default ?? "")) vals[f.cell] = v;
+    }
     return vals;
   }
 
@@ -633,10 +725,10 @@ ${items}
     const out = await PDFLib.PDFDocument.create();
     let added = 0;
     const originals = [], guide = [];
-    for (const el of document.querySelectorAll(`#${t.id} [data-file]`)) {
-      const f = files.find((x) => x.id === +el.dataset.file);
+    for (const [fid, set] of Object.entries(t.evidence || {})) {
+      const f = files.find((x) => x.id === +fid);
       if (!f) continue;
-      const pages = parsePages(el.value, f.numPages);
+      const pages = [...set].filter((p) => p >= 1 && p <= f.numPages).sort((a, b) => a - b);
       if (!pages.length) continue;
       if (f.kind === "pdf") {
         if (!pages.includes(1)) pages.unshift(1);
@@ -686,6 +778,8 @@ ${items}
         const ev = await evidence(t);
         if (!ev.empty) addEvidence(zip, "증빙자료/", t, ev);
       }
+      const memo = done.filter((t) => t.notes).map((t) => `[${t.no}. ${t.cat.name} · ${DOCNAME[t.type]}]\r\n${t.notes}\r\n`);
+      if (memo.length) zip.file("AI_검토메모.txt", "\ufeff" + memo.join("\r\n"));
       save(await zip.generateAsync({ type: "blob" }), `${substId()}_등록서류.zip`);
     } catch (e) { alert("다운로드 파일 생성 실패: " + e.message); console.error(e); }
   }

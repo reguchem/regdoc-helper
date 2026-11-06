@@ -315,6 +315,51 @@ EXTRA_KW = {
 }
 
 
+# 면제조건 ↔ 근거 시험항목 연계 (국립환경과학원고시 제2022-62호 별표 2 기준)
+# (면제 대상 번호, 면제조건 문구에 포함된 글자, 근거 항목 번호들, all=모두 필요 / any=하나 이상)
+LINK_RULES = [
+    (2, "가수분해로 불안정", [34], "all"),
+    (4, "300℃ 초과 온도에서 녹거나", [3], "all"),
+    (5, "녹는점이", [3], "all"),
+    (11, "폭발성 물질", [10], "all"),
+    (13, "가수분해로 불안정", [34], "all"),
+    (14, "급성흡입독성 시험자료를 제출", [19], "all"),
+    (16, "급성경피독성 시험에서", [18], "all"),
+    (19, "입자의 크기가 100", [8], "all"),
+    (21, "In vivo 체세포", [22], "all"),
+    (22, "모두 음성", [15, 21], "all"),
+    (25, "추가적인 평가가 필요", [15, 21, 22], "all"),
+    (23, "반복투여독성(90일) 또는 만성독성", [26], "all"),
+    (26, "반복투여독성(28일)에서 중대한 독성", [23], "all"),
+    (26, "28일 한계시험", [23], "all"),
+    (24, "최기형성 또는 2세대", [27, 28], "any"),
+    (30, "어류에 대한 만성독성", [37], "all"),
+    (32, "물벼룩에 대한 만성", [38], "all"),
+    (34, "이분해성 또는 본질적분해성", [31, 35], "any"),
+    (35, "이분해성 물질", [31], "all"),
+    (36, "이분해성 또는 본질적분해성", [31, 35], "any"),
+    (41, "이분해성물질로", [31], "all"),
+    (43, "이분해성 또는 본질적분해성", [31, 35], "any"),
+    (46, "흡착 및 탈착에 관한 측정 시험자료", [42], "all"),
+    (48, "이분해성 또는 본질적분해성", [31, 35], "any"),
+]
+
+
+def build_links(out):
+    links = []
+    for no, key, srcs, mode in LINK_RULES:
+        it = next((i for i in out["items"] if i["type"] == "면제" and int(i["sheet"].split(".")[0]) == no), None)
+        if not it:
+            print("  ! 면제 시트 없음:", no); continue
+        f = next((f for f in out["sheets"][it["key"]]["fields"] if f["label"] == "면제조건"), None)
+        opts = [o for o in (f["options"] or []) if key in o] if f else []
+        if not opts:
+            print("  ! 면제조건 문구를 찾지 못함:", no, key); continue
+        for o in opts:
+            links.append({"target": no, "option": o, "sources": srcs, "mode": mode})
+    return links
+
+
 def collect_items():
     """양식의 '번호.항목[_생략|_면제]' 시트를 모두 입력 대상 항목으로 수집"""
     kw_by_no, orig_by_sheet, group_by_file = {}, {}, {}
@@ -384,6 +429,7 @@ def main():
                      if it["file"] == fk and re.match(rf"^{no}\.", it["sheet"])}
             out["catalog"].append({"no": no, "file": fk, "group": GROUP[fk], "name": str(name).strip(),
                                    "tonnage": str(ton).strip(), "tier": TIER.get(str(ton).strip(), 4), "types": types})
+    out["links"] = build_links(out)
     os.makedirs(os.path.join(ROOT, "config"), exist_ok=True)
     with open(os.path.join(ROOT, "config", "templates.json"), "w", encoding="utf8") as f:
         json.dump(out, f, ensure_ascii=False, indent=1)

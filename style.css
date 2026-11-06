@@ -112,3 +112,22 @@ details.res .item-dl button { padding: 5px 12px; font-size: .85rem; }
 .manual-box .steps { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin-bottom: 8px; }
 .manual-box textarea { min-height: 110px; font-family: ui-monospace, Consolas, monospace; font-size: .8rem; }
 .manual-box .warn-list { color: var(--err); font-size: .84rem; margin: 6px 0; }
+
+/* 면제 근거 연계 */
+.link-badge { display: inline-block; margin-left: 6px; padding: 0 6px; border-radius: 8px; font-size: .72rem;
+  background: #fff4cc; color: #7a5a00; vertical-align: 1px; }
+@media (prefers-color-scheme: dark) { .link-badge { background: #4a3f12; color: #ffe08a; } }
+.panel tr.linked td.iname { font-weight: 600; }
+.panel tr.cond td { background: var(--bg); padding: 4px 10px 8px 26px; }
+.panel tr.cond select { margin-top: 0; font-size: .8rem; padding: 4px 6px; }
+.cond-hint { font-size: .76rem; color: var(--accent); margin-top: 4px; }
+
+/* 결과: 다운로드 전용 목록 */
+div.res { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; border: 1px solid var(--line);
+  border-radius: 8px; padding: 9px 14px; margin-top: 8px; }
+div.res .res-name { flex: 1 1 280px; }
+div.res .res-doc { color: var(--muted); font-size: .86rem; margin-left: 4px; }
+div.res .st { font-size: .78rem; padding: 2px 8px; border-radius: 10px; background: var(--accent-2); white-space: nowrap; cursor: default; }
+div.res .st.ok { color: var(--ok); } div.res .st.err { color: var(--err); } div.res .st.wait { color: var(--muted); }
+div.res .res-act { display: flex; gap: 6px; }
+div.res .res-act button { padding: 5px 14px; font-size: .85rem; }
