@@ -22,7 +22,7 @@
         <input type="password" id="apiKey" placeholder="sk-ant-..." autocomplete="off">
       </label>
       <label>모델
-        <input type="text" id="model" value="claude-sonnet-4-5">
+        <input type="text" id="model" value="claude-sonnet-5-5" list="modelList"><datalist id="modelList"><option value="claude-sonnet-5-5"><option value="claude-opus-5-5"><option value="claude-haiku-5-5"><option value="claude-fable-5-1"></datalist>
       </label>
     </div>
     <label class="check"><input type="checkbox" id="rememberKey"> 이 PC 브라우저에 키 저장 (다른 사람과 같이 쓰는 PC에서는 체크하지 마세요)</label>
@@ -31,26 +31,31 @@
 
   <section class="card">
     <h2><span class="num">2</span> 물질 · 시험항목</h2>
-    <div class="grid2">
+    <div class="grid3 subst">
       <label>화학물질명 <input type="text" id="chemName" placeholder="예: Trimethyl phosphite"></label>
       <label>CAS No. <input type="text" id="cas" placeholder="예: 121-45-9"></label>
+      <label>톤수범주
+        <select id="tonnage">
+          <option value="1">1-10톤</option>
+          <option value="2">10-100톤</option>
+          <option value="3">100-1,000톤</option>
+          <option value="4">1,000톤 이상</option>
+        </select>
+      </label>
     </div>
-    <div class="grid3">
-      <label>분야 <select id="group"></select></label>
-      <label>시험항목 <select id="item"></select></label>
-      <label>작성 유형 <select id="type"></select></label>
-    </div>
-    <p class="hint" id="sheetInfo"></p>
+    <p class="hint">작성할 항목마다 서류 종류를 하나 고르세요. 선택한 동그라미를 다시 누르면 해제됩니다. 회색 항목은 아직 양식이 없습니다.</p>
+    <div class="panels" id="panels"></div>
+    <p class="hint" id="selSummary"></p>
   </section>
 
   <section class="card">
     <h2><span class="num">3</span> 자료 업로드</h2>
     <div id="drop" class="drop" tabindex="0">
-      <input type="file" id="fileInput" accept="application/pdf" multiple hidden>
+      <input type="file" id="fileInput" accept=".pdf,.docx,.xlsx,.pptx" multiple hidden>
       <div class="drop-inner">
         <div class="drop-icon" aria-hidden="true">⬆</div>
-        <strong>국제평가보고서 · 논문 · 시험보고서 PDF를 여기에 끌어다 놓으세요</strong>
-        <span>또는 클릭해서 선택 (여러 개 가능)</span>
+        <strong>국제평가보고서 · 논문 · 시험보고서 파일을 여기에 끌어다 놓으세요</strong>
+        <span>PDF · 워드(.docx) · 엑셀(.xlsx) · 파워포인트(.pptx) / 클릭해서 선택 (여러 개 가능)</span>
       </div>
     </div>
     <ul id="fileList" class="files"></ul>
@@ -67,19 +72,12 @@
 
   <section class="card hidden" id="sec-result">
     <h2><span class="num">4</span> 결과 확인 · 다운로드</h2>
-    <p class="hint">AI가 채운 값입니다. 필요하면 여기서 고친 뒤 다운로드하세요. 노란 칸은 드롭다운 목록에 없는 값입니다.</p>
-    <div id="aiNotes" class="notes hidden"></div>
+    <p class="hint">AI가 채운 값입니다. 항목을 눌러 펼친 뒤 필요하면 고치고 다운로드하세요. 노란 칸은 드롭다운 목록에 없는 값입니다.</p>
     <div class="dl">
-      <button id="dlXlsx" class="primary">엑셀 다운로드</button>
-      <button id="dlPdf">증빙자료 PDF 다운로드</button>
+      <button id="dlAll" class="primary">전체 다운로드 (ZIP)</button>
+      <span class="hint">분야별 엑셀(작성한 시트만 표시) + 항목별 증빙자료(PDF 발췌 / 워드·엑셀·PPT는 원본+인용위치)</span>
     </div>
-    <div id="evidence" class="evidence"></div>
-    <div class="table-wrap">
-      <table id="resultTable">
-        <thead><tr><th>셀</th><th>항목</th><th>값</th></tr></thead>
-        <tbody></tbody>
-      </table>
-    </div>
+    <div id="results"></div>
   </section>
 </main>
 
@@ -88,6 +86,7 @@
 <script src="vendor/jszip.min.js"></script>
 <script src="vendor/pdf-lib.min.js"></script>
 <script src="vendor/pdf.min.js"></script>
+<script src="office-text.js"></script>
 <script src="xlsx-fill.js"></script>
 <script src="app.js"></script>
 </body>

@@ -13695,5 +13695,519 @@
     }
    ]
   }
- }
+ },
+ "groups": [
+  {
+   "file": "phys",
+   "label": "물리화학적 특성"
+  },
+  {
+   "file": "human",
+   "label": "인체건강유해성"
+  },
+  {
+   "file": "env",
+   "label": "환경유해성"
+  }
+ ],
+ "catalog": [
+  {
+   "no": 1,
+   "file": "phys",
+   "group": "물리화학적 특성",
+   "name": "물질의 상태",
+   "tonnage": "1-10",
+   "tier": 1,
+   "types": {
+    "제출": "phys|1.물질의상태"
+   }
+  },
+  {
+   "no": 2,
+   "file": "phys",
+   "group": "물리화학적 특성",
+   "name": "물용해도",
+   "tonnage": "1-10",
+   "tier": 1,
+   "types": {
+    "제출": "phys|2.물용해도",
+    "면제": "phys|2.물용해도_면제"
+   }
+  },
+  {
+   "no": 3,
+   "file": "phys",
+   "group": "물리화학적 특성",
+   "name": "녹는점/어는점",
+   "tonnage": "1-10",
+   "tier": 1,
+   "types": {
+    "제출": "phys|3.녹는점어는점",
+    "면제": "phys|3.녹는점어는점_면제"
+   }
+  },
+  {
+   "no": 4,
+   "file": "phys",
+   "group": "물리화학적 특성",
+   "name": "끓는점",
+   "tonnage": "1-10",
+   "tier": 1,
+   "types": {
+    "제출": "phys|4.끓는점"
+   }
+  },
+  {
+   "no": 5,
+   "file": "phys",
+   "group": "물리화학적 특성",
+   "name": "증기압",
+   "tonnage": "1-10",
+   "tier": 1,
+   "types": {
+    "제출": "phys|5.증기압"
+   }
+  },
+  {
+   "no": 6,
+   "file": "phys",
+   "group": "물리화학적 특성",
+   "name": "옥탄올/물 분배계수",
+   "tonnage": "1-10",
+   "tier": 1,
+   "types": {
+    "제출": "phys|6.옥탄올물분배계수"
+   }
+  },
+  {
+   "no": 7,
+   "file": "phys",
+   "group": "물리화학적 특성",
+   "name": "밀도",
+   "tonnage": "1-10",
+   "tier": 1,
+   "types": {
+    "제출": "phys|7.밀도"
+   }
+  },
+  {
+   "no": 8,
+   "file": "phys",
+   "group": "물리화학적 특성",
+   "name": "입도분석",
+   "tonnage": "1-10",
+   "tier": 1,
+   "types": {
+    "면제": "phys|8.입도분석_면제"
+   }
+  },
+  {
+   "no": 9,
+   "file": "phys",
+   "group": "물리화학적 특성",
+   "name": "인화성",
+   "tonnage": "10-100",
+   "tier": 2,
+   "types": {
+    "제출": "phys|9.인화성"
+   }
+  },
+  {
+   "no": 10,
+   "file": "phys",
+   "group": "물리화학적 특성",
+   "name": "폭발성",
+   "tonnage": "10-100",
+   "tier": 2,
+   "types": {
+    "면제": "phys|10.폭발성_면제"
+   }
+  },
+  {
+   "no": 11,
+   "file": "phys",
+   "group": "물리화학적 특성",
+   "name": "산화성",
+   "tonnage": "10-100",
+   "tier": 2,
+   "types": {
+    "면제": "phys|11.산화성_면제"
+   }
+  },
+  {
+   "no": 12,
+   "file": "phys",
+   "group": "물리화학적 특성",
+   "name": "점도",
+   "tonnage": "100-1000",
+   "tier": 3,
+   "types": {}
+  },
+  {
+   "no": 13,
+   "file": "phys",
+   "group": "물리화학적 특성",
+   "name": "해리상수",
+   "tonnage": "100-1000",
+   "tier": 3,
+   "types": {}
+  },
+  {
+   "no": 14,
+   "file": "human",
+   "group": "인체건강유해성",
+   "name": "급성경구독성",
+   "tonnage": "1-10",
+   "tier": 1,
+   "types": {
+    "제출": "human|14.급성경구",
+    "생략": "human|14.급성경구_생략"
+   }
+  },
+  {
+   "no": 15,
+   "file": "human",
+   "group": "인체건강유해성",
+   "name": "복귀돌연변이(유전독성)",
+   "tonnage": "1-10",
+   "tier": 1,
+   "types": {
+    "제출": "human|15.복귀돌연변이"
+   }
+  },
+  {
+   "no": 16,
+   "file": "human",
+   "group": "인체건강유해성",
+   "name": "피부 자극성/부식성",
+   "tonnage": "1-10",
+   "tier": 1,
+   "types": {
+    "제출": "human|16.피부자극성"
+   }
+  },
+  {
+   "no": 17,
+   "file": "human",
+   "group": "인체건강유해성",
+   "name": "피부 과민성",
+   "tonnage": "1-10",
+   "tier": 1,
+   "types": {
+    "제출": "human|17.피부과민성"
+   }
+  },
+  {
+   "no": 18,
+   "file": "human",
+   "group": "인체건강유해성",
+   "name": "급성경피독성",
+   "tonnage": "10-100",
+   "tier": 2,
+   "types": {
+    "제출": "human|18.급성경피",
+    "생략": "human|18.급성경피_생략"
+   }
+  },
+  {
+   "no": 19,
+   "file": "human",
+   "group": "인체건강유해성",
+   "name": "급성흡입독성",
+   "tonnage": "10-100",
+   "tier": 2,
+   "types": {
+    "생략": "human|19.급성흡입_생략"
+   }
+  },
+  {
+   "no": 20,
+   "file": "human",
+   "group": "인체건강유해성",
+   "name": "눈 자극성/부식성",
+   "tonnage": "10-100",
+   "tier": 2,
+   "types": {
+    "제출": "human|20.눈자극",
+    "생략": "human|20.눈자극_생략"
+   }
+  },
+  {
+   "no": 21,
+   "file": "human",
+   "group": "인체건강유해성",
+   "name": "포유류 배양세포를 이용한 염색체이상(유전독성)",
+   "tonnage": "10-100",
+   "tier": 2,
+   "types": {
+    "제출": "human|21.염색체이상(In vitro)"
+   }
+  },
+  {
+   "no": 22,
+   "file": "human",
+   "group": "인체건강유해성",
+   "name": "시험동물을 이용한 유전독성(유전독성)",
+   "tonnage": "10-100",
+   "tier": 2,
+   "types": {
+    "면제": "human|22.유전독성(In vivo)_면제"
+   }
+  },
+  {
+   "no": 23,
+   "file": "human",
+   "group": "인체건강유해성",
+   "name": "반복투여독성_28일",
+   "tonnage": "10-100",
+   "tier": 2,
+   "types": {
+    "면제": "human|23.반복투여28일_면제"
+   }
+  },
+  {
+   "no": 24,
+   "file": "human",
+   "group": "인체건강유해성",
+   "name": "생식 및 발달독성 스크리닝(생식독성)",
+   "tonnage": "10-100",
+   "tier": 2,
+   "types": {
+    "면제": "human|24.생식발달스크리닝_면제"
+   }
+  },
+  {
+   "no": 25,
+   "file": "human",
+   "group": "인체건강유해성",
+   "name": "추가 유전독성(생식세포 유전독성 등)",
+   "tonnage": "100-1000",
+   "tier": 3,
+   "types": {}
+  },
+  {
+   "no": 26,
+   "file": "human",
+   "group": "인체건강유해성",
+   "name": "반복투여독성_90일",
+   "tonnage": "1000-",
+   "tier": 4,
+   "types": {
+    "생략": "human|26.반복투여90일_생략"
+   }
+  },
+  {
+   "no": 27,
+   "file": "human",
+   "group": "인체건강유해성",
+   "name": "최기형성(생식독성)",
+   "tonnage": "1000-",
+   "tier": 4,
+   "types": {
+    "제출": "human|27.최기형성"
+   }
+  },
+  {
+   "no": 28,
+   "file": "human",
+   "group": "인체건강유해성",
+   "name": "2세대 생식독성(생식독성)",
+   "tonnage": "1000-",
+   "tier": 4,
+   "types": {}
+  },
+  {
+   "no": 29,
+   "file": "human",
+   "group": "인체건강유해성",
+   "name": "발암성",
+   "tonnage": "1000-",
+   "tier": 4,
+   "types": {}
+  },
+  {
+   "no": 30,
+   "file": "env",
+   "group": "환경유해성",
+   "name": "어류급성독성",
+   "tonnage": "1-10",
+   "tier": 1,
+   "types": {
+    "제출": "env|30.어류급성"
+   }
+  },
+  {
+   "no": 31,
+   "file": "env",
+   "group": "환경유해성",
+   "name": "이분해성",
+   "tonnage": "1-10",
+   "tier": 1,
+   "types": {
+    "제출": "env|31.이분해성",
+    "생략": "env|31.이분해성_생략"
+   }
+  },
+  {
+   "no": 32,
+   "file": "env",
+   "group": "환경유해성",
+   "name": "물벼룩급성독성",
+   "tonnage": "1-10",
+   "tier": 1,
+   "types": {
+    "제출": "env|32.물벼룩급성"
+   }
+  },
+  {
+   "no": 33,
+   "file": "env",
+   "group": "환경유해성",
+   "name": "담수조류 성장저해",
+   "tonnage": "10-100",
+   "tier": 2,
+   "types": {
+    "제출": "env|33.담수조류"
+   }
+  },
+  {
+   "no": 34,
+   "file": "env",
+   "group": "환경유해성",
+   "name": "pH에 따른 가수분해",
+   "tonnage": "10-100",
+   "tier": 2,
+   "types": {
+    "제출": "env|34.가수분해",
+    "생략": "env|34.가수분해_생략",
+    "면제": "env|34.가수분해_면제"
+   }
+  },
+  {
+   "no": 35,
+   "file": "env",
+   "group": "환경유해성",
+   "name": "본질적 분해성",
+   "tonnage": "100-1000",
+   "tier": 3,
+   "types": {}
+  },
+  {
+   "no": 36,
+   "file": "env",
+   "group": "환경유해성",
+   "name": "분해산물의 확인",
+   "tonnage": "100-1000",
+   "tier": 3,
+   "types": {}
+  },
+  {
+   "no": 37,
+   "file": "env",
+   "group": "환경유해성",
+   "name": "어류만성독성",
+   "tonnage": "100-1000",
+   "tier": 3,
+   "types": {}
+  },
+  {
+   "no": 38,
+   "file": "env",
+   "group": "환경유해성",
+   "name": "물벼룩만성독성",
+   "tonnage": "100-1000",
+   "tier": 3,
+   "types": {}
+  },
+  {
+   "no": 39,
+   "file": "env",
+   "group": "환경유해성",
+   "name": "육생식물 급성독성",
+   "tonnage": "100-1000",
+   "tier": 3,
+   "types": {}
+  },
+  {
+   "no": 40,
+   "file": "env",
+   "group": "환경유해성",
+   "name": "육생 무척추동물 급성독성",
+   "tonnage": "100-1000",
+   "tier": 3,
+   "types": {}
+  },
+  {
+   "no": 41,
+   "file": "env",
+   "group": "환경유해성",
+   "name": "활성슬러지 호흡저해",
+   "tonnage": "100-1000",
+   "tier": 3,
+   "types": {}
+  },
+  {
+   "no": 42,
+   "file": "env",
+   "group": "환경유해성",
+   "name": "흡착 및 탈착",
+   "tonnage": "100-1000",
+   "tier": 3,
+   "types": {}
+  },
+  {
+   "no": 43,
+   "file": "env",
+   "group": "환경유해성",
+   "name": "환경 거동 및 동태에 대한 추가 정보",
+   "tonnage": "1000-",
+   "tier": 4,
+   "types": {}
+  },
+  {
+   "no": 44,
+   "file": "env",
+   "group": "환경유해성",
+   "name": "육생식물 만성독성",
+   "tonnage": "1000-",
+   "tier": 4,
+   "types": {}
+  },
+  {
+   "no": 45,
+   "file": "env",
+   "group": "환경유해성",
+   "name": "육생 무척추동물 만성독성",
+   "tonnage": "1000-",
+   "tier": 4,
+   "types": {}
+  },
+  {
+   "no": 46,
+   "file": "env",
+   "group": "환경유해성",
+   "name": "흡착 및 탈착에 대한 추가 정보",
+   "tonnage": "1000-",
+   "tier": 4,
+   "types": {}
+  },
+  {
+   "no": 47,
+   "file": "env",
+   "group": "환경유해성",
+   "name": "저서생물 만성독성",
+   "tonnage": "1000-",
+   "tier": 4,
+   "types": {}
+  },
+  {
+   "no": 48,
+   "file": "env",
+   "group": "환경유해성",
+   "name": "생물농축성",
+   "tonnage": "1000-",
+   "tier": 4,
+   "types": {}
+  }
+ ]
 }

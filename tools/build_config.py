@@ -311,6 +311,22 @@ def main():
         out["sheets"][key] = info
         out["items"].append({"group": grp, "name": name, "type": typ, "file": fk, "sheet": sheet,
                              "key": key, "keywords": kw.split()})
+    # 목차 시트 → 톤수별 시험항목 카탈로그
+    GROUP = {"phys": "물리화학적 특성", "human": "인체건강유해성", "env": "환경유해성"}
+    TIER = {"1-10": 1, "10-100": 2, "100-1000": 3, "1000-": 4}
+    out["groups"] = [{"file": k, "label": v} for k, v in GROUP.items()]
+    out["catalog"] = []
+    for fk in FILES:
+        ws = openpyxl.load_workbook(os.path.join(T, FILES[fk]))["목차"]
+        for r in range(3, 40):
+            no, name, ton = ws.cell(r, 1).value, ws.cell(r, 2).value, ws.cell(r, 3).value
+            if not isinstance(no, (int, float)) or not name:
+                continue
+            no = int(no)
+            types = {it["type"]: it["key"] for it in out["items"]
+                     if it["file"] == fk and re.match(rf"^{no}\.", it["sheet"])}
+            out["catalog"].append({"no": no, "file": fk, "group": GROUP[fk], "name": str(name).strip(),
+                                   "tonnage": str(ton).strip(), "tier": TIER.get(str(ton).strip(), 4), "types": types})
     os.makedirs(os.path.join(ROOT, "config"), exist_ok=True)
     with open(os.path.join(ROOT, "config", "templates.json"), "w", encoding="utf8") as f:
         json.dump(out, f, ensure_ascii=False, indent=1)

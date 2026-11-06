@@ -9,7 +9,7 @@
 * { box-sizing: border-box; }
 body { margin: 0; background: var(--bg); color: var(--text);
   font-family: "Pretendard", "Malgun Gothic", "Apple SD Gothic Neo", system-ui, sans-serif; line-height: 1.5; }
-.wrap { max-width: 980px; margin: 0 auto; padding: 0 16px; }
+.wrap { max-width: 1280px; margin: 0 auto; padding: 0 16px; }
 .top { background: var(--accent); color: #fff; padding: 22px 0 18px; margin-bottom: 20px; }
 @media (prefers-color-scheme: dark) { .top { background: #1f3a63; } }
 .top h1 { margin: 0; font-size: 1.5rem; }
@@ -63,3 +63,34 @@ td.lbl small { display: block; color: var(--muted); }
 td textarea.warn { background: var(--warn); }
 tr.sec td { background: var(--accent-2); font-weight: 600; }
 .foot { color: var(--muted); font-size: .8rem; padding-bottom: 30px; }
+
+/* 시험항목 선택 패널 */
+.subst { margin-bottom: 4px; }
+.panels { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-top: 12px; }
+@media (max-width: 1000px) { .panels { grid-template-columns: 1fr; } }
+.panel { border: 1px solid var(--line); border-radius: 8px; overflow: hidden; }
+.panel table { font-size: .87rem; }
+.panel th { background: var(--accent-2); font-weight: 600; text-align: center; padding: 8px 4px; line-height: 1.25; font-size: .8rem; }
+.panel th.pname { text-align: left; font-size: .95rem; padding-left: 12px; color: var(--accent); }
+.panel td { padding: 6px 4px; border-bottom: 1px solid var(--line); vertical-align: middle; }
+.panel td.iname { padding-left: 12px; }
+.panel td.iname .no { color: var(--muted); font-size: .78rem; margin-right: 4px; }
+.panel td.opt { text-align: center; width: 58px; }
+.panel input[type=radio] { width: 17px; height: 17px; accent-color: var(--accent); cursor: pointer; margin: 0; }
+.panel tr.none td.iname { color: var(--muted); }
+.panel tr.none td.iname::after { content: " · 양식 없음"; font-size: .75rem; }
+.panel tr.tierhdr td { background: var(--bg); color: var(--muted); font-size: .76rem; padding: 3px 12px; }
+.panel .dash { color: var(--line); }
+.panel .panel-actions { padding: 6px 10px; text-align: right; font-size: .78rem; }
+.panel .panel-actions button { padding: 3px 8px; font-size: .78rem; }
+
+/* 결과 */
+details.res { border: 1px solid var(--line); border-radius: 8px; margin-top: 10px; }
+details.res > summary { padding: 10px 14px; cursor: pointer; display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+details.res > summary .st { font-size: .78rem; padding: 2px 8px; border-radius: 10px; background: var(--accent-2); }
+details.res > summary .st.ok { color: var(--ok); }
+details.res > summary .st.err { color: var(--err); }
+details.res > summary .st.wait { color: var(--muted); }
+details.res .body { padding: 0 14px 14px; }
+details.res .item-dl { display: flex; gap: 8px; flex-wrap: wrap; margin: 8px 0; }
+details.res .item-dl button { padding: 5px 12px; font-size: .85rem; }

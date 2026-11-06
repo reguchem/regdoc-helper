@@ -1,4 +1,6 @@
-/* 엑셀 양식의 서식을 그대로 두고 셀 값만 채우는 모듈 (JSZip 사용) */
+/* 엑셀 양식의 서식을 그대로 두고 셀 값만 채우는 모듈 (JSZip 사용)
+   fillWorkbook(arrayBuffer, { "시트명": { "D7": "값", ... }, ... })
+   → 채운 시트만 보이고 나머지 시트는 숨긴 xlsx Blob */
 (function (global) {
   const NS = "http://schemas.openxmlformats.org/spreadsheetml/2006/main";
   const RNS = "http://schemas.openxmlformats.org/officeDocument/2006/relationships";
@@ -9,26 +11,9 @@
   const ser = (d) => new XMLSerializer().serializeToString(d);
   const kids = (el, name) => Array.from(el.childNodes).filter((n) => n.nodeType === 1 && n.localName === name);
 
-  async function fillWorkbook(arrayBuffer, sheetName, values) {
-    const zip = await JSZip.loadAsync(arrayBuffer);
-    const wb = parse(await zip.file("xl/workbook.xml").async("string"));
-    const rels = parse(await zip.file("xl/_rels/workbook.xml.rels").async("string"));
-    const relMap = {};
-    for (const r of rels.getElementsByTagName("Relationship")) {
-      const t = r.getAttribute("Target");
-      relMap[r.getAttribute("Id")] = t.startsWith("/") ? t.slice(1) : "xl/" + t;
-    }
-    const sheetEls = Array.from(wb.getElementsByTagNameNS(NS, "sheet"));
-    const target = sheetEls.find((s) => s.getAttribute("name") === sheetName);
-    if (!target) throw new Error("양식에 시트가 없습니다: " + sheetName);
-    const targetIdx = sheetEls.indexOf(target);
-
-    // 1) 대상 시트 셀 채우기
-    const path = relMap[target.getAttributeNS(RNS, "id")];
-    const ws = parse(await zip.file(path).async("string"));
+  function fillSheet(ws, values) {
     const sheetData = ws.getElementsByTagNameNS(NS, "sheetData")[0];
     let touchedFormula = false;
-
     function getRow(r) {
       for (const row of kids(sheetData, "row")) {
         const rr = +row.getAttribute("r");
@@ -64,28 +49,38 @@
         t.textContent = text; is.appendChild(t); c.appendChild(is);
       }
     }
+    return touchedFormula;
+  }
 
-    // 2) 탭 선택 상태: 대상 시트만 선택
-    for (let i = 0; i < sheetEls.length; i++) {
-      const p = relMap[sheetEls[i].getAttributeNS(RNS, "id")];
-      const doc = i === targetIdx ? ws : parse(await zip.file(p).async("string"));
-      let changed = false;
-      for (const sv of doc.getElementsByTagNameNS(NS, "sheetView")) {
-        if (i === targetIdx) { sv.setAttribute("tabSelected", "1"); changed = true; }
-        else if (sv.hasAttribute("tabSelected")) { sv.removeAttribute("tabSelected"); changed = true; }
-      }
-      if (i !== targetIdx && changed) zip.file(p, ser(doc));
+  async function fillWorkbook(arrayBuffer, sheetValues) {
+    const zip = await JSZip.loadAsync(arrayBuffer);
+    const wb = parse(await zip.file("xl/workbook.xml").async("string"));
+    const rels = parse(await zip.file("xl/_rels/workbook.xml.rels").async("string"));
+    const relMap = {};
+    for (const r of rels.getElementsByTagName("Relationship")) {
+      const t = r.getAttribute("Target");
+      relMap[r.getAttribute("Id")] = t.startsWith("/") ? t.slice(1) : "xl/" + t;
     }
-    zip.file(path, ser(ws));
+    const sheetEls = Array.from(wb.getElementsByTagNameNS(NS, "sheet"));
+    const names = Object.keys(sheetValues);
+    for (const n of names) if (!sheetEls.some((s) => s.getAttribute("name") === n)) throw new Error("양식에 시트가 없습니다: " + n);
+    const firstIdx = sheetEls.findIndex((s) => names.includes(s.getAttribute("name")));
+    let touchedFormula = false;
 
-    // 3) 대상 외 시트 숨김(드롭다운 목록 참조가 깨지지 않도록 삭제하지 않음)
-    for (const s of sheetEls) {
-      if (s === target) s.removeAttribute("state");
-      else s.setAttribute("state", "hidden");
+    for (let i = 0; i < sheetEls.length; i++) {
+      const s = sheetEls[i], name = s.getAttribute("name");
+      const p = relMap[s.getAttributeNS(RNS, "id")];
+      const doc = parse(await zip.file(p).async("string"));
+      if (names.includes(name)) touchedFormula = fillSheet(doc, sheetValues[name]) || touchedFormula;
+      for (const sv of doc.getElementsByTagNameNS(NS, "sheetView")) {
+        if (i === firstIdx) sv.setAttribute("tabSelected", "1"); else sv.removeAttribute("tabSelected");
+      }
+      zip.file(p, ser(doc));
+      // 채운 시트만 보이기 (드롭다운 목록 참조가 깨지지 않도록 다른 시트는 삭제하지 않고 숨김)
+      if (names.includes(name)) s.removeAttribute("state"); else s.setAttribute("state", "hidden");
     }
     const view = wb.getElementsByTagNameNS(NS, "workbookView")[0];
-    if (view) { view.setAttribute("activeTab", targetIdx); view.setAttribute("firstSheet", targetIdx); }
-    // 수식(예: 제목 =F8) 열 때 재계산
+    if (view) { view.setAttribute("activeTab", firstIdx); view.setAttribute("firstSheet", firstIdx); }
     let calc = wb.getElementsByTagNameNS(NS, "calcPr")[0];
     if (!calc) {
       calc = wb.createElementNS(NS, "calcPr");
@@ -93,14 +88,14 @@
       const anchor = Array.from(wb.documentElement.childNodes).find((n) => n.nodeType === 1 && after.includes(n.localName));
       wb.documentElement.insertBefore(calc, anchor || null);
     }
-    calc.setAttribute("fullCalcOnLoad", "1");
+    calc.setAttribute("fullCalcOnLoad", "1");   // 제목(=F8 등) 수식 재계산
     zip.file("xl/workbook.xml", ser(wb));
 
     if (touchedFormula && zip.file("xl/calcChain.xml")) {
       zip.remove("xl/calcChain.xml");
-      let r = await zip.file("xl/_rels/workbook.xml.rels").async("string");
+      const r = await zip.file("xl/_rels/workbook.xml.rels").async("string");
       zip.file("xl/_rels/workbook.xml.rels", r.replace(/<Relationship [^>]*calcChain[^>]*\/>/, ""));
-      let ct = await zip.file("[Content_Types].xml").async("string");
+      const ct = await zip.file("[Content_Types].xml").async("string");
       zip.file("[Content_Types].xml", ct.replace(/<Override [^>]*calcChain[^>]*\/>/, ""));
     }
     return zip.generateAsync({ type: "blob", mimeType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", compression: "DEFLATE" });
