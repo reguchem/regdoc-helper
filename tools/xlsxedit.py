@@ -404,3 +404,75 @@ class Book:
         with zipfile.ZipFile(path, "w", zipfile.ZIP_DEFLATED) as z:
             for n in self.order:
                 z.writestr(n, self.files[n])
+
+
+def _copy_sheet(self, src, new_name):
+    """같은 통합문서 안에서 시트를 복제(서식·병합·드롭다운 유지, 그림/개체는 제외)."""
+    src_path = self.ws_path(src)
+    src_tree = self.ws(src)
+    # 새 파트 이름
+    nums = [int(m.group(1)) for n in self.files for m in [re.match(r"xl/worksheets/sheet(\d+)\.xml$", n)] if m]
+    new_path = f"xl/worksheets/sheet{max(nums) + 1}.xml"
+    tree = copy.deepcopy(src_tree)
+    root = tree
+    for k in list(root.attrib):
+        if k.endswith("}uid"):
+            del root.attrib[k]
+    for tag in ("drawing", "legacyDrawing", "legacyDrawingHF", "picture", "oleObjects", "controls", "tableParts"):
+        for e in root.findall("m:" + tag, N):
+            root.remove(e)
+    for e in root.iter():
+        for k in list(e.attrib):
+            if k == "{%s}id" % RNS or k.endswith("}uid"):
+                del e.attrib[k]
+    for sv in root.iter("{%s}sheetView" % NS):
+        if "tabSelected" in sv.attrib:
+            del sv.attrib["tabSelected"]
+    self.files[new_path] = b""
+    self.order.append(new_path)
+    self.trees[new_path] = tree
+    # workbook rels
+    rels = etree.fromstring(self.files["xl/_rels/workbook.xml.rels"])
+    ids = [int(re.sub(r"\D", "", r.get("Id")) or 0) for r in rels]
+    rid = f"rId{max(ids) + 1}"
+    etree.SubElement(rels, "{http://schemas.openxmlformats.org/package/2006/relationships}Relationship",
+                     Id=rid, Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet",
+                     Target=new_path.replace("xl/", ""))
+    self.files["xl/_rels/workbook.xml.rels"] = etree.tostring(rels, xml_declaration=True, encoding="UTF-8", standalone=True)
+    self.rid2path[rid] = new_path
+    # content types
+    ct = etree.fromstring(self.files["[Content_Types].xml"])
+    etree.SubElement(ct, "{http://schemas.openxmlformats.org/package/2006/content-types}Override",
+                     PartName="/" + new_path,
+                     ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml")
+    self.files["[Content_Types].xml"] = etree.tostring(ct, xml_declaration=True, encoding="UTF-8", standalone=True)
+    # workbook sheet entry
+    sheets = self.sheets()
+    sid = max(int(s.get("sheetId")) for s in sheets) + 1
+    el = etree.SubElement(sheets, "{%s}sheet" % NS, name=new_name, sheetId=str(sid))
+    el.set("{%s}id" % RNS, rid)
+    # 인쇄영역 복제
+    pa = self.print_area(src)
+    if pa:
+        a, b = pa.split(":")
+        ca, ra = split_ref(a); cb, rb = split_ref(b)
+        self.set_print_area(new_name, f"${ca}${ra}:${cb}${rb}")
+    # 수식/유효성의 시트 자기참조는 없음(상대참조만 사용)
+    return new_name
+
+
+def _remove_dv(self, sheet, ref):
+    self._remove_cell_from_dv(self.ws(sheet), ref)
+
+
+Book.copy_sheet = _copy_sheet
+Book.remove_dv = _remove_dv
+
+
+def _set_row_height(self, sheet, r, ht):
+    row = self._row(self.ws(sheet), r)
+    row.set("ht", str(ht))
+    row.set("customHeight", "1")
+
+
+Book.set_row_height = _set_row_height

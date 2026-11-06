@@ -28,7 +28,7 @@
 
 ## 양식을 바꿨을 때
 1. `templates/`의 해당 파일을 새 양식으로 교체 (파일명 phys.xlsx / human.xlsx / env.xlsx 유지)
-2. 시트를 추가·이름 변경했다면 `tools/build_config.py`의 `ITEMS` 목록 수정
+2. 시트 이름은 `번호.항목` / `번호.항목_생략` / `번호.항목_면제` 규칙을 지키면 자동으로 인식됨
 3. `python3 tools/build_config.py` 실행 → `config/templates.json` 갱신 후 커밋
 
 ## 참고

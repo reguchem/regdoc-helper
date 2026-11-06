@@ -111,8 +111,8 @@ def list_options(formula, wb):
 
 def get_validations(xml):
     dvs = []
-    for m in re.finditer(r'<dataValidation\b([^>]*)>(.*?)</dataValidation>', xml, re.S):
-        attrs, body = m.group(1), m.group(2)
+    for m in re.finditer(r'<dataValidation\b([^>]*?)(?:/>|>(.*?)</dataValidation>)', xml, re.S):
+        attrs, body = m.group(1), m.group(2) or ""
         if 'type="list"' not in attrs:
             continue
         sq = re.search(r'sqref="([^"]+)"', attrs)
@@ -284,11 +284,68 @@ def build_sheet(path, sheet, wb, xml):
     return {"title": str(ws["A2"].value or ""), "fields": fields}
 
 
+EXTRA_KW = {
+    8: "particle size distribution granulometry D50 laser diffraction sieve 입도",
+    10: "explosive properties EU A.14 UN test series DSC exothermic decomposition energy 폭발성",
+    11: "oxidising oxidizing properties EU A.17 A.21 UN O.1 O.2 산화성",
+    12: "viscosity dynamic kinematic mPa s OECD 114 점도",
+    13: "dissociation constant pKa OECD 112 해리상수",
+    19: "acute inhalation toxicity LC50 OECD 403 436 aerosol vapour 급성흡입",
+    22: "in vivo micronucleus chromosome aberration bone marrow OECD 474 475 유전독성",
+    23: "repeated dose 28-day OECD 407 NOAEL subacute 반복투여",
+    24: "reproductive developmental toxicity screening OECD 421 422 생식 발달",
+    25: "germ cell mutagenicity dominant lethal spermatogonial OECD 478 483 생식세포",
+    26: "repeated dose 90-day subchronic OECD 408 413 NOAEL 반복투여",
+    28: "two-generation reproduction toxicity OECD 416 443 extended one-generation 생식독성",
+    29: "carcinogenicity OECD 451 453 tumour tumor 발암성",
+    35: "inherent biodegradability OECD 302 Zahn-Wellens 본질적분해성",
+    36: "degradation products identification metabolites 분해산물",
+    37: "fish chronic toxicity early life stage OECD 210 NOEC 어류만성",
+    38: "Daphnia reproduction chronic OECD 211 NOEC 물벼룩만성",
+    39: "terrestrial plants acute OECD 208 seedling emergence 육생식물",
+    40: "earthworm acute OECD 207 terrestrial invertebrates 육생무척추동물",
+    41: "activated sludge respiration inhibition OECD 209 활성슬러지",
+    42: "adsorption desorption Koc OECD 106 121 흡착",
+    43: "environmental fate behaviour transformation 환경거동",
+    44: "terrestrial plants chronic vegetative vigour OECD 227 육생식물만성",
+    45: "earthworm reproduction OECD 222 chronic 육생무척추동물만성",
+    46: "adsorption desorption Koc additional 흡착탈착",
+    47: "sediment dwelling organisms chronic Chironomus OECD 218 219 저서생물",
+    48: "bioaccumulation BCF fish OECD 305 생물농축성",
+}
+
+
+def collect_items():
+    """양식의 '번호.항목[_생략|_면제]' 시트를 모두 입력 대상 항목으로 수집"""
+    kw_by_no, orig_by_sheet, group_by_file = {}, {}, {}
+    for grp, name, typ, fk, sheet, kw, osheet in ITEMS:
+        no = int(sheet.split(".")[0])
+        kw_by_no.setdefault(no, kw)
+        orig_by_sheet[(fk, sheet)] = osheet
+        group_by_file[fk] = grp
+    items = []
+    for fk in FILES:
+        wb = openpyxl.load_workbook(os.path.join(T, FILES[fk]))
+        toc = wb["목차"]
+        names = {int(toc.cell(r, 1).value): str(toc.cell(r, 2).value).strip()
+                 for r in range(3, 40) if isinstance(toc.cell(r, 1).value, (int, float))}
+        for sh in wb.sheetnames:
+            m = re.match(r"^(\d+)\.(.+?)(_생략|_면제)?$", sh)
+            if not m:
+                continue
+            no = int(m.group(1))
+            typ = {"_생략": "생략", "_면제": "면제"}.get(m.group(3), "제출")
+            kw = kw_by_no.get(no) or EXTRA_KW.get(no, names.get(no, ""))
+            items.append((group_by_file.get(fk, fk), names.get(no, m.group(2)), typ, fk, sh, kw,
+                          orig_by_sheet.get((fk, sh))))
+    return items
+
+
 def main():
     out = {"files": {k: "templates/" + v for k, v in FILES.items()}, "items": [], "sheets": {}}
     cache = {}
     origwb = {}
-    for grp, name, typ, fk, sheet, kw, osheet in ITEMS:
+    for grp, name, typ, fk, sheet, kw, osheet in collect_items():
         path = os.path.join(T, FILES[fk])
         if fk not in cache:
             z, sp = sheet_xml_paths(path)
@@ -300,7 +357,7 @@ def main():
         key = f"{fk}|{sheet}"
         info = build_sheet(path, sheet, wb, xml)
         op = os.path.join(ORIG, FILES[fk])
-        if os.path.exists(op):
+        if osheet and os.path.exists(op):
             if fk not in origwb:
                 origwb[fk] = openpyxl.load_workbook(op)
             ows = origwb[fk][osheet]
