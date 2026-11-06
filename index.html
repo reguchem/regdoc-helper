@@ -1,0 +1,94 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>등록서류 작성 도우미</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header class="top">
+  <div class="wrap">
+    <h1>등록서류 작성 도우미</h1>
+    <p class="sub">화평법 등록 · 국문요약서 / 생략·면제사유서 자동 작성 + 증빙자료 PDF 발췌</p>
+  </div>
+</header>
+
+<main class="wrap">
+  <section class="card" id="sec-setting">
+    <h2><span class="num">1</span> 설정</h2>
+    <div class="grid2">
+      <label>Anthropic API 키
+        <input type="password" id="apiKey" placeholder="sk-ant-..." autocomplete="off">
+      </label>
+      <label>모델
+        <input type="text" id="model" value="claude-sonnet-4-5">
+      </label>
+    </div>
+    <label class="check"><input type="checkbox" id="rememberKey"> 이 PC 브라우저에 키 저장 (다른 사람과 같이 쓰는 PC에서는 체크하지 마세요)</label>
+    <p class="hint">키는 이 브라우저에서 Anthropic API로만 직접 전송되고, 다른 서버에는 저장되지 않습니다.</p>
+  </section>
+
+  <section class="card">
+    <h2><span class="num">2</span> 물질 · 시험항목</h2>
+    <div class="grid2">
+      <label>화학물질명 <input type="text" id="chemName" placeholder="예: Trimethyl phosphite"></label>
+      <label>CAS No. <input type="text" id="cas" placeholder="예: 121-45-9"></label>
+    </div>
+    <div class="grid3">
+      <label>분야 <select id="group"></select></label>
+      <label>시험항목 <select id="item"></select></label>
+      <label>작성 유형 <select id="type"></select></label>
+    </div>
+    <p class="hint" id="sheetInfo"></p>
+  </section>
+
+  <section class="card">
+    <h2><span class="num">3</span> 자료 업로드</h2>
+    <div id="drop" class="drop" tabindex="0">
+      <input type="file" id="fileInput" accept="application/pdf" multiple hidden>
+      <div class="drop-inner">
+        <div class="drop-icon" aria-hidden="true">⬆</div>
+        <strong>국제평가보고서 · 논문 · 시험보고서 PDF를 여기에 끌어다 놓으세요</strong>
+        <span>또는 클릭해서 선택 (여러 개 가능)</span>
+      </div>
+    </div>
+    <ul id="fileList" class="files"></ul>
+  </section>
+
+  <div class="actions">
+    <button id="runBtn" class="primary" disabled>등록서류 작성</button>
+  </div>
+
+  <section class="card hidden" id="sec-progress">
+    <h2>진행 상황</h2>
+    <ol id="log" class="log"></ol>
+  </section>
+
+  <section class="card hidden" id="sec-result">
+    <h2><span class="num">4</span> 결과 확인 · 다운로드</h2>
+    <p class="hint">AI가 채운 값입니다. 필요하면 여기서 고친 뒤 다운로드하세요. 노란 칸은 드롭다운 목록에 없는 값입니다.</p>
+    <div id="aiNotes" class="notes hidden"></div>
+    <div class="dl">
+      <button id="dlXlsx" class="primary">엑셀 다운로드</button>
+      <button id="dlPdf">증빙자료 PDF 다운로드</button>
+    </div>
+    <div id="evidence" class="evidence"></div>
+    <div class="table-wrap">
+      <table id="resultTable">
+        <thead><tr><th>셀</th><th>항목</th><th>값</th></tr></thead>
+        <tbody></tbody>
+      </table>
+    </div>
+  </section>
+</main>
+
+<footer class="wrap foot">양식 버전: ver.1 · AI가 작성한 내용은 반드시 원문과 대조해 검토하세요.</footer>
+
+<script src="vendor/jszip.min.js"></script>
+<script src="vendor/pdf-lib.min.js"></script>
+<script src="vendor/pdf.min.js"></script>
+<script src="xlsx-fill.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
