@@ -42,7 +42,8 @@
     $("geminiKey").addEventListener("change", saveKey);
     $("geminiModel").addEventListener("change", () => store.set("regdoc.geminiModel", $("geminiModel").value.trim()));
     const t = store.get("regdoc.tonnage"); if (t) $("tonnage").value = t;
-    $("apiKey").addEventListener("change", saveKey);
+    $("apiKey").addEventListener("change", () => { $("apiKey").value = $("apiKey").value.trim(); $("keyMsg").textContent = ""; saveKey(); });
+    $("checkKey").addEventListener("click", checkKey);
     $("rememberKey").addEventListener("change", saveKey);
     $("model").addEventListener("change", () => store.set("regdoc.model", $("model").value.trim()));
     $("tonnage").addEventListener("change", () => { store.set("regdoc.tonnage", $("tonnage").value); renderPanels(); });
@@ -66,6 +67,35 @@
       store.set("regdoc.apiKey", $("apiKey").value.trim());
       store.set("regdoc.geminiKey", $("geminiKey").value.trim());
     } else { store.del("regdoc.apiKey"); store.del("regdoc.geminiKey"); }
+  }
+  // API 키 형식 점검: 흔한 붙여넣기 실수를 미리 알려줌
+  function keyProblem(k) {
+    if (!k) return "Anthropic API 키를 입력하세요.";
+    if (/\s/.test(k)) return "키 중간에 띄어쓰기나 줄바꿈이 들어 있습니다. 키만 다시 복사해 붙여넣으세요.";
+    if (/[^\x21-\x7e]/.test(k)) return "키에 한글이나 특수문자가 섞여 있습니다. 키만 다시 복사해 붙여넣으세요.";
+    if (/^AIza/.test(k)) return "Google Gemini 키입니다. 1번에서 'Google Gemini' 방식을 고르거나 Anthropic 키를 넣으세요.";
+    if (!/^sk-ant-/.test(k)) return "Anthropic API 키는 'sk-ant-'로 시작합니다. platform.claude.com → API Keys에서 만든 키를 넣으세요.";
+    if (k.length < 60) return "키가 너무 짧습니다. 키 전체가 복사되었는지 확인하세요(키는 만들 때 한 번만 전체가 보입니다).";
+    return "";
+  }
+  async function checkKey() {
+    const k = $("apiKey").value.trim(), msg = $("keyMsg");
+    const bad = keyProblem(k);
+    if (bad) { msg.textContent = "✖ " + bad; msg.style.color = "var(--err)"; return; }
+    msg.textContent = "확인 중…"; msg.style.color = "";
+    try {
+      const res = await fetch("https://api.anthropic.com/v1/models?limit=1", {
+        headers: { "x-api-key": k, "anthropic-version": "2023-06-01", "anthropic-dangerous-direct-browser-access": "true" },
+      });
+      const d = await res.json().catch(() => ({}));
+      if (res.ok) { msg.textContent = "✔ 사용할 수 있는 키입니다."; msg.style.color = "var(--ok)"; saveKey(); return; }
+      const m = (d.error && d.error.message) || res.statusText;
+      msg.style.color = "var(--err)";
+      msg.textContent = res.status === 401
+        ? "✖ 등록되지 않았거나 삭제·비활성화된 키입니다. Console에서 새 키를 만들어 다시 넣으세요."
+        : res.status === 403 ? "✖ 권한이 없는 키입니다(조직/작업공간 설정 확인). " + m
+        : `✖ 확인 실패(${res.status}): ${m}`;
+    } catch (e) { msg.textContent = "✖ 연결 실패: 인터넷/사내 방화벽 확인 (" + e.message + ")"; msg.style.color = "var(--err)"; }
   }
   const getMode = () => (document.querySelector("input[name=mode]:checked") || {}).value || "anthropic";
   function showMode() {
@@ -278,6 +308,7 @@
     const mode = getMode();
     const key = mode === "gemini" ? $("geminiKey").value.trim() : $("apiKey").value.trim();
     if (mode === "anthropic" && !key) { alert("1번 설정에 Anthropic API 키를 입력하세요."); $("apiKey").focus(); return; }
+    if (mode === "anthropic") { const bad = keyProblem(key); if (bad) { alert(bad); $("apiKey").focus(); return; } }
     if (mode === "gemini" && !key) { alert("1번 설정에 Gemini API 키를 입력하세요."); $("geminiKey").focus(); return; }
     const ok = files.filter((f) => !f.loading && !f.error);
     const unmet = unmetLinks();
@@ -529,7 +560,7 @@ ${exemptBlock(t, manual)}
     const data = await res.json().catch(() => ({}));
     if (!res.ok) {
       const m = (data.error && data.error.message) || res.statusText;
-      if (res.status === 401) throw new Error("API 키가 올바르지 않습니다. (" + m + ")");
+      if (res.status === 401) throw new Error("API 키가 올바르지 않습니다. 1번 설정의 [키 확인]으로 점검하고, 안 되면 Console에서 새 키를 만들어 넣으세요. (" + m + ")");
       if (res.status === 404) throw new Error("모델 이름을 확인하세요: " + model + " (" + m + ")");
       if (res.status === 429 || res.status === 529) throw new Error("요청이 많아 잠시 후 다시 시도해 주세요. (" + m + ")");
       throw new Error(`API 오류 ${res.status}: ${m}`);

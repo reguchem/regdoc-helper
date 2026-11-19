@@ -131,3 +131,6 @@ div.res .st { font-size: .78rem; padding: 2px 8px; border-radius: 10px; backgrou
 div.res .st.ok { color: var(--ok); } div.res .st.err { color: var(--err); } div.res .st.wait { color: var(--muted); }
 div.res .res-act { display: flex; gap: 6px; }
 div.res .res-act button { padding: 5px 14px; font-size: .85rem; }
+.steps-inline { display: flex; gap: 8px; align-items: center; margin: 2px 0 4px; }
+.steps-inline button { padding: 5px 12px; font-size: .85rem; }
+.steps-inline .hint { margin: 0; }
