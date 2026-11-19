@@ -134,3 +134,4 @@ div.res .res-act button { padding: 5px 14px; font-size: .85rem; }
 .steps-inline { display: flex; gap: 8px; align-items: center; margin: 2px 0 4px; }
 .steps-inline button { padding: 5px 12px; font-size: .85rem; }
 .steps-inline .hint { margin: 0; }
+div.res .res-key { font-size: .78rem; color: var(--muted); margin-top: 2px; cursor: help; }

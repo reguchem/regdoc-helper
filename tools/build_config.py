@@ -19,7 +19,7 @@ ORIG = os.path.join(ROOT, "orig")  # ver.0 원본(작성예시 추출용, 사이
 
 # (분야, 시험항목, 유형, 파일, 시트, 관련 키워드, ver.0 원본 시트명)
 ITEMS = [
-    ("물리화학", "물질의 상태", "제출", "phys", "1.물질의상태", "physical state appearance colour odour 성상 색", "1.물질의상태"),
+    ("물리화학", "물질의 상태", "제출", "phys", "1.물질의상태", "physical state appearance form colour color odour odor description liquid solid gas powder crystal viscous colourless 성상 색 냄새 외관", "1.물질의상태"),
     ("물리화학", "물용해도", "제출", "phys", "2.물용해도", "water solubility 용해도 mg/L", "2.물용해도"),
     ("물리화학", "물용해도", "면제", "phys", "2.물용해도_면제", "water solubility hydrolysis half-life 가수분해 반감기", "면제_물용해도"),
     ("물리화학", "녹는점/어는점", "제출", "phys", "3.녹는점어는점", "melting point freezing point 녹는점 어는점", "3.녹는점어는점"),
@@ -360,6 +360,21 @@ def build_links(out):
     return links
 
 
+# 시험항목별 작성 지침: AI가 각 항목에서 무엇을 찾아 어느 칸에 쓸지 (작성 요청문에 함께 전달)
+ITEM_GUIDE = {
+    1: ("물질의 상태는 상온·상압(약 20℃, 101.3 kPa)에서 물질이 어떤 모습인지를 묻는 항목이다. "
+        "확인할 내용: ① 물리적 상태(고체/액체/기체) ② 형태(분말, 결정, 과립, 덩어리, 유동성 액체, 점성 액체, 압축·액화가스 등) "
+        "③ 색깔과 투명도(무색, 백색, 담황색, 투명/불투명 등) ④ 냄새(무취, 특유의 냄새, 자극적인 냄새 등) ⑤ 점성 등 기타 외관 특징. "
+        "문서에서 'Physical state', 'Appearance', 'Form', 'Colour/Color', 'Odour/Odor', 'Description', 'at 20 °C' 등의 기재를 찾는다. "
+        "녹는점·끓는점·밀도 같은 수치 자료는 이 항목의 결과로 쓰지 않는다(상태 판단 근거로 요약에 한 줄 언급하는 것은 가능). "
+        "칸 배치: '물리적 상태' 첫 칸=고체/액체/기체 중 하나, 둘째 칸=형태와 점성 등 세부 성상(예: 점성이 있는 액체, 백색 결정성 분말), "
+        "'색깔'=색과 투명도(예: 투명한 무색), '냄새'=선택지에서 고르고 맞는 것이 없으면 '기타'를 고른 뒤 '냄새(기타)'에 원문 표현, "
+        "'물질구분'=유기물/무기물 등, '결과도출방법'은 보통 '육안 관찰'. "
+        "결론 예: \"AAA는 상온에서 특유의 냄새가 있는 투명한 무색 액체이다.\" "
+        "요약에는 출처 자료, 관찰 조건(온도 등), 상태·형태·색·냄새를 서술한다."),
+}
+
+
 def collect_items():
     """양식의 '번호.항목[_생략|_면제]' 시트를 모두 입력 대상 항목으로 수집"""
     kw_by_no, orig_by_sheet, group_by_file = {}, {}, {}
@@ -428,7 +443,8 @@ def main():
             types = {it["type"]: it["key"] for it in out["items"]
                      if it["file"] == fk and re.match(rf"^{no}\.", it["sheet"])}
             out["catalog"].append({"no": no, "file": fk, "group": GROUP[fk], "name": str(name).strip(),
-                                   "tonnage": str(ton).strip(), "tier": TIER.get(str(ton).strip(), 4), "types": types})
+                                   "tonnage": str(ton).strip(), "tier": TIER.get(str(ton).strip(), 4), "types": types,
+                                   "guide": ITEM_GUIDE.get(no, "")})
     out["links"] = build_links(out)
     os.makedirs(os.path.join(ROOT, "config"), exist_ok=True)
     with open(os.path.join(ROOT, "config", "templates.json"), "w", encoding="utf8") as f:

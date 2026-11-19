@@ -255,6 +255,11 @@
         for (let p = 1; p <= pdf.numPages; p++) {
           const page = await pdf.getPage(p);
           const tc = await page.getTextContent();
+          entry.geo = entry.geo || [];
+          entry.geo.push(tc.items.filter((it) => it.str && it.transform).map((it) => ({
+            s: it.str, x: it.transform[4], y: it.transform[5], w: it.width || 0,
+            h: it.height || Math.hypot(it.transform[2], it.transform[3]) || 8,
+          })));
           let s = "", lastY = null;
           for (const it of tc.items) {
             const y = it.transform ? it.transform[5] : null;
@@ -311,6 +316,7 @@
     if (mode === "anthropic") { const bad = keyProblem(key); if (bad) { alert(bad); $("apiKey").focus(); return; } }
     if (mode === "gemini" && !key) { alert("1번 설정에 Gemini API 키를 입력하세요."); $("geminiKey").focus(); return; }
     const ok = files.filter((f) => !f.loading && !f.error);
+    runFiles = ok;
     const unmet = unmetLinks();
     if (unmet.length && !confirm(unmet.map((u) => `${u.no}번 면제의 근거 항목(${u.need.join(", ")}번)이 선택되지 않았습니다.`).join("\n") + "\n\n근거 없이 계속할까요?")) return;
     tasks = [...selection.entries()].sort((a, b) => a[0] - b[0]).map(([no, type]) => {
@@ -382,12 +388,20 @@
         if (f.label === "CAS No." && $("cas").value.trim()) t.values[f.cell] = $("cas").value.trim();
       }
       for (const f of ok) t.evidence[f.id] = new Set();
+      t.quotes = {};
       for (const e of json.evidence || []) {
         const file = ok[(e.file || 1) - 1];
         if (!file) continue;
         for (const p of e.pages || []) if (p >= 1 && p <= file.numPages) t.evidence[file.id].add(+p);
+        for (const q of e.quotes || []) {
+          const pg = +q.page, txt = String(q.text || q.quote || "").trim();
+          if (!pg || !txt || pg > file.numPages) continue;
+          t.evidence[file.id].add(pg);
+          ((t.quotes[file.id] = t.quotes[file.id] || {})[pg] = t.quotes[file.id][pg] || []).push(txt);
+        }
       }
       t.notes = json.notes || "";
+      t.studies = Array.isArray(json.studies) ? json.studies : [];
       t.status = "ok";
       if (t.type === "면제") {
         const fc = t.sheet.fields.find((f) => f.label === "면제조건");
@@ -398,6 +412,9 @@
         for (const x of srcDone) for (const [fid, set] of Object.entries(x.evidence || {})) {
           if (!t.evidence[fid]) t.evidence[fid] = new Set();
           set.forEach((p) => t.evidence[fid].add(p));
+          for (const [pg, qs] of Object.entries((x.quotes || {})[fid] || {})) {
+            ((t.quotes[fid] = t.quotes[fid] || {})[pg] = t.quotes[fid][pg] || []).push(...qs);
+          }
         }
       }
   }
@@ -459,7 +476,8 @@
         sentInfo.push(`문서 ${no} "${f.name}": ${KINDNAME[f.kind]} ${f.numPages}${UNIT[f.kind]} 전체 전송 (${total.toLocaleString()}자)`);
       }
       const body = selected.map((x) => `[p.${x.p}]${f.names[x.p - 1] && f.kind !== "pdf" ? ` (${f.names[x.p - 1]})` : ""}\n${x.t}`).join("\n\n");
-      content.push({ type: "text", text: `<문서 ${no}: ${f.name} (${unitHeader(f)})>\n${body}\n</문서 ${no}>` });
+      const dt = docType(f);
+      content.push({ type: "text", text: `<문서 ${no}: ${f.name} (${unitHeader(f)}${dt ? `, 문서 종류 추정: ${dt}` : ""})>\n${body}\n</문서 ${no}>` });
     });
     return { content, sentInfo, manualAttach };
   }
@@ -468,6 +486,19 @@
     const bytes = new Uint8Array(buf); let s = "";
     for (let i = 0; i < bytes.length; i += 0x8000) s += String.fromCharCode.apply(null, bytes.subarray(i, i + 0x8000));
     return btoa(s);
+  }
+
+  // 문서 앞부분 글자로 평가보고서 종류 추정(키자료 선정 2순위에 사용)
+  function docType(f) {
+    const head = (f.pages || []).slice(0, 4).join(" ").slice(0, 20000);
+    if (/European Union Risk Assessment Report|EU Risk Assessment Report|\bEU RAR\b/i.test(head)) return "EU RAR";
+    if (/CoRAP|Community Rolling Action Plan|Substance Evaluation Conclusion|Substance evaluation report/i.test(head)) return "CoRAP 물질평가 보고서";
+    if (/SIDS Initial Assessment|\bSIAR\b|\bSIAP\b|\bSIAM\b|OECD SIDS|SIDS Dossier|Screening Information Data ?Set/i.test(head)) return "OECD SIDS";
+    if (/Hazard Characterization Document|High Production Volume|\bHPV\b/i.test(head)) return "US EPA HPV 평가보고서";
+    if (/AICIS|NICNAS|IMAP|Australian Industrial Chemicals/i.test(head)) return "호주 AICIS/NICNAS 평가보고서";
+    if (/ECHA|Registration dossier|European Chemicals Agency/i.test(head)) return "ECHA 등록정보";
+    if (/Final Report|Study Report|GLP Compliance|Good Laboratory Practice/i.test(head)) return "시험보고서";
+    return "";
   }
 
   const SYSTEM_PROMPT = `너는 한국 「화학물질의 등록 및 평가 등에 관한 법률」(화평법) 등록신청자료 작성 전문가다.
@@ -482,10 +513,26 @@
 6. 수치는 원문의 값·단위·부등호를 그대로 쓴다(예: > 2000 mg/kg bw).
 7. 출처 표기는 "저자 또는 기관(연도)., 제목, 쪽p." 형식으로 쓴다.
 8. 면제사유서는 면제조건 해당 여부를, 생략사유서는 생략조건(시행령 제13조)과 근거자료를 문서에서 확인해 작성한다.
-9. 근거로 사용한 위치를 evidence에 모두 적는다. 번호는 문서 본문의 [p.N] 표기의 N을 쓴다(PDF는 쪽, 워드는 쪽 또는 구간, 엑셀은 시트, 파워포인트는 슬라이드 순번). PDF 표지는 자동으로 포함되므로 적지 않아도 된다.
+9. 근거로 사용한 위치를 evidence에 모두 적는다. 번호는 문서 본문의 [p.N] 표기의 N을 쓴다(PDF는 쪽, 워드는 쪽 또는 구간, 엑셀은 시트, 파워포인트는 슬라이드 순번). PDF 표지는 자동으로 포함되므로 적지 않아도 된다. evidence에는 키자료가 기재된 쪽을 반드시 넣고, 생략사유서 요약표에 함께 적은 참고자료의 쪽도 넣는다.
+
+10. evidence의 quotes에는 각 근거 쪽에서 이 시험항목 내용이 적힌 부분(시험방법, 시험조건, 결과값, 판정 문장이나 표의 행)을 문서에 적힌 글자 그대로(번역·요약·수정 없이, 원문 언어 그대로) 쪽마다 1~6개, 각 20~200자로 옮겨 적는다. 증빙자료에서 이 부분에 형광펜 표시를 한다.
+
+[키자료 선정 기준]
+해당 시험항목에 대한 시험(연구)이 문서에 여러 건 있으면 먼저 모두 찾아 studies 목록에 적고, 아래 순서대로 비교해 키자료(key study) 1건을 고른다. 앞 순위에서 우열이 갈리면 그 자료를 고르고, 같을 때만 다음 순위로 넘어간다.
+ 1) 신뢰도: Klimisch 1(제한없는 신뢰성) > 2(제한적인 신뢰성). 3(신뢰성이 없음)·4(신뢰성이 부여될 수 없음)는 키자료로 쓰지 않는다(그것밖에 없으면 쓰되 notes에 밝힌다). 문서에 신뢰도가 없으면 가이드라인 준수·GLP·기재 수준으로 판단한다.
+ 2) 출처 문서의 종류: EU RAR(EU Risk Assessment Report)·CoRAP 물질평가 보고서 = OECD SIDS(SIAR/SIDS Dossier) > 기타 국가·국제기구 평가보고서(ECHA 등록정보, US EPA HPV, 호주 AICIS/NICNAS, 일본 J-CHECK 등) > 개별 시험보고서·논문·기타.
+ 3) 내용의 충실도: 같은 시험항목에 대해 시험방법·시험종·용량(농도)·노출기간·관찰항목·결과값·판정이 더 자세히 적힌 자료를 고른다. 같은 시험이 여러 문서에 인용돼 있으면 하나의 시험으로 보고, 가장 자세하게 기술한 문서의 내용으로 작성한다.
+ 4) 시험방법·GLP: 국제 가이드라인(OECD TG 등)을 따르고 GLP를 준수한 시험.
+ 5) 시험물질: 신청물질과 같은 물질로 수행한 시험 > 유사물질(read-across) 자료.
+ 6) 시험조건의 적합성: 사람·환경 노출과 관련 있는 노출경로와 시험종, 충분한 시험기간.
+ 7) 결과의 보수성: 위 조건이 같으면 더 강한 유해성을 보인 결과(낮은 NOAEL·LD50·LC50·EC50 등).
+ 8) 최신성: 최신 가이드라인에 따른 최근 시험.
+국문요약서는 키자료로 작성하고 '정보유형/자료의 구분'은 "주요자료"로 둔다. 생략사유서 요약표는 출처 1에 키자료, 출처 2 이하에 참고자료를 적는다. 키자료가 아닌 시험은 studies에 key=false로 남긴다.
 
 [출력 형식] 아래 JSON 하나만 출력한다. 다른 설명이나 코드블록 표시는 쓰지 않는다.
-{"fields": {"셀주소": "값", ...}, "evidence": [{"file": 문서번호, "pages": [쪽번호, ...]}], "notes": "검토자가 확인해야 할 사항(자료에서 못 찾은 항목, 판단이 애매한 부분 등)을 한국어로 간단히"}`;
+{"fields": {"셀주소": "값", ...}, "evidence": [{"file": 문서번호, "pages": [쪽번호, ...], "quotes": [{"page": 쪽번호, "text": "문서에 적힌 그대로의 구절"}]}],
+ "studies": [{"key": true또는false, "file": 문서번호, "pages": [쪽번호], "source_type": "EU RAR|CoRAP|OECD SIDS|기타 평가보고서|시험보고서|논문|기타", "study": "저자 또는 시험기관(연도)", "method": "시험방법(가이드라인)", "glp": "예|아니오|기재없음", "reliability": "1|2|3|4|기재없음", "substance": "신청물질|유사물질(물질명)", "detail": "상|중|하", "result": "주요 결과값", "reason": "키자료 선정 또는 제외 이유(한 줄)"}],
+ "notes": "검토자가 확인해야 할 사항(자료에서 못 찾은 항목, 판단이 애매한 부분 등)을 한국어로 간단히"}`;
 
   function buildPrompt(t, list, manual) {
     const name = $("chemName").value.trim(), cas = $("cas").value.trim();
@@ -510,7 +557,7 @@
 - 양식 시트: ${t.item.sheet} (제목: ${t.sheet.title})
 - 업로드 문서: ${list.map((f, i) => `문서 ${i + 1} "${f.name}"`).join(", ")}
 
-[입력칸 목록] (셀주소 | 위치 | 항목 | 선택지 | 기본값 | 작성예시)
+${t.cat.guide ? `[이 시험항목에서 확인할 내용]\n${t.cat.guide}\n\n` : ""}[입력칸 목록] (셀주소 | 위치 | 항목 | 선택지 | 기본값 | 작성예시)
 ${lines}
 
 ${exemptBlock(t, manual)}
@@ -618,7 +665,7 @@ ${exemptBlock(t, manual)}
     const items = [...tasks].sort((a, b) => a.level - b.level || a.no - b.no).map((t) => `\n==================== 항목 ${t.no} ====================\n${buildPrompt(t, ok, true).replace(/\n위 입력칸을 모두 검토해[\s\S]*$/, "")}`).join("\n");
     return `${sys}
 [출력 형식] 아래 JSON 하나만 출력한다. 다른 설명이나 코드블록 표시는 쓰지 않는다. 항목이 많아 답이 길어지면 끝까지 이어서 출력한다.
-{"items": {"항목번호": {"fields": {"셀주소": "값", ...}, "evidence": [{"file": 문서번호, "pages": [번호, ...]}], "notes": "검토 필요사항"}, ...}}
+{"items": {"항목번호": {"fields": {"셀주소": "값", ...}, "evidence": [{"file": 문서번호, "pages": [번호, ...], "quotes": [{"page": 번호, "text": "문서 원문 그대로의 구절"}]}], "studies": [{"key": true또는false, "file": 문서번호, "pages": [번호], "source_type": "EU RAR|CoRAP|OECD SIDS|기타 평가보고서|시험보고서|논문|기타", "study": "저자(연도)", "method": "시험방법", "glp": "예|아니오|기재없음", "reliability": "1|2|3|4|기재없음", "substance": "신청물질|유사물질", "detail": "상|중|하", "result": "주요 결과값", "reason": "선정/제외 이유"}], "notes": "검토 필요사항"}, ...}}
 작성할 항목번호: ${tasks.map((t) => t.no).join(", ")}
 
 ==================== 자료 ====================
@@ -707,7 +754,19 @@ ${items}
     row.querySelector('[data-act="xlsx"]').disabled = !done;
     row.querySelector('[data-act="pdf"]').disabled = !done || !hasEvidence(t);
   }
-  function renderTaskBody(t) { updateTaskHead(t); }
+  function renderTaskBody(t) {
+    updateTaskHead(t);
+    const row = $(t.id);
+    if (!row) return;
+    let el = row.querySelector(".res-key");
+    if (!el) { el = document.createElement("div"); el.className = "res-key"; row.querySelector(".res-name").appendChild(el); }
+    const key = (t.studies || []).find((x) => x.key);
+    if (t.status !== "ok" || !key) { el.textContent = ""; return; }
+    const others = t.studies.length - 1;
+    el.textContent = `키자료: ${[key.study, key.source_type, key.method, key.glp === "예" ? "GLP" : "", key.reliability ? "신뢰도 " + key.reliability : ""].filter(Boolean).join(" · ")}` +
+      (others > 0 ? ` (참고자료 ${others}건)` : "");
+    el.title = t.studies.map((x) => `${x.key ? "★ 키자료" : "- 참고"} ${x.study || ""} [${x.source_type || ""}] ${x.result || ""}\n   ${x.reason || ""}`).join("\n");
+  }
   const hasEvidence = (t) => Object.values(t.evidence || {}).some((set) => set.size);
 
   function collectValues(t) {
@@ -752,9 +811,55 @@ ${items}
   }
 
   // 증빙자료: PDF는 표지+인용 쪽을 발췌해 하나로 합치고, 워드·엑셀·파워포인트는 원본 + 인용 위치 안내
+  // ---- 형광펜: AI가 옮겨 적은 원문 구절을 쪽의 글자 위치에서 찾아 옅은 노란색 칠 ----
+  const normCh = (c) => c.toLowerCase().replace(/[\s\u00a0]/g, "").replace(/[‐-―−–—]/g, "-").replace(/[“”″]/g, '"').replace(/[‘’′]/g, "'");
+  function highlightPage(page, items, quotes) {
+    // 글자 단위로 이어 붙인 쪽 텍스트(공백 제외)와 각 글자가 속한 텍스트 조각 번호
+    let text = ""; const owner = [], off = [];
+    items.forEach((it, idx) => { [...it.s].forEach((ch, ci) => { for (const c of normCh(ch)) { text += c; owner.push(idx); off.push(ci); } }); });
+    const hit = new Map();   // 조각 번호 → [시작 글자, 끝 글자]
+    const mark = (k) => { const i = owner[k], o = off[k], r = hit.get(i); if (!r) hit.set(i, [o, o]); else { r[0] = Math.min(r[0], o); r[1] = Math.max(r[1], o); } };
+    for (const q of quotes) {
+      const nq = [...q].map(normCh).join("");
+      if (nq.length < 4) continue;
+      let pos = text.indexOf(nq), len = nq.length;
+      if (pos < 0) {   // 그대로 안 맞으면 앞·뒤 일부, 그래도 안 되면 30자 단위 조각으로 찾기
+        const parts = [];
+        for (let i = 0; i < nq.length; i += 30) parts.push(nq.slice(i, i + 30));
+        for (const part of parts) {
+          if (part.length < 8) continue;
+          const p2 = text.indexOf(part);
+          if (p2 >= 0) for (let k = p2; k < p2 + part.length; k++) mark(k);
+        }
+        continue;
+      }
+      for (let k = pos; k < pos + len; k++) mark(k);
+    }
+    if (!hit.size) return 0;
+    // 같은 줄의 인접 조각은 하나의 상자로 합침
+    // 조각 안에서 해당 글자 범위만큼만 (글자 폭을 균등하다고 보고) 칠함
+    const boxes = [...hit].map(([i, [a, b]]) => {
+      const it = items[i], L = Math.max(1, [...it.s].length);
+      return { x: it.x + it.w * a / L, y: it.y - it.h * 0.22, w: it.w * (b - a + 1) / L, h: it.h * 1.18 };
+    }).filter((b) => b.w > 0)
+      .sort((a, b) => b.y - a.y || a.x - b.x);
+    const merged = [];
+    for (const b of boxes) {
+      const m = merged[merged.length - 1];
+      if (m && Math.abs(m.y - b.y) < b.h * 0.4 && b.x <= m.x + m.w + b.h * 1.5) {
+        const r = Math.max(m.x + m.w, b.x + b.w); m.x = Math.min(m.x, b.x); m.w = r - m.x; m.h = Math.max(m.h, b.h);
+      } else merged.push({ ...b });
+    }
+    for (const b of merged) {
+      page.drawRectangle({ x: b.x - 1, y: b.y, width: b.w + 2, height: b.h, color: PDFLib.rgb(1, 0.93, 0.35),
+        opacity: 0.4, borderWidth: 0, blendMode: PDFLib.BlendMode.Multiply });
+    }
+    return merged.length;
+  }
+
   async function evidence(t) {
     const out = await PDFLib.PDFDocument.create();
-    let added = 0;
+    let added = 0, highlights = 0;
     const originals = [], guide = [];
     for (const [fid, set] of Object.entries(t.evidence || {})) {
       const f = files.find((x) => x.id === +fid);
@@ -765,7 +870,12 @@ ${items}
         if (!pages.includes(1)) pages.unshift(1);
         const src = await PDFLib.PDFDocument.load(f.bytes.slice(0), { ignoreEncryption: true });
         const copied = await out.copyPages(src, pages.map((p) => p - 1));
-        copied.forEach((pg) => out.addPage(pg)); added += copied.length;
+        copied.forEach((pg, i) => {
+          out.addPage(pg);
+          const qs = ((t.quotes || {})[f.id] || {})[pages[i]];
+          if (qs && f.geo && f.geo[pages[i] - 1]) highlights += highlightPage(pg, f.geo[pages[i] - 1], qs);
+        });
+        added += copied.length;
         guide.push(`- ${f.name}: ${pages.join(", ")}쪽 (증빙 PDF에 발췌됨)`);
       } else {
         originals.push(f);
@@ -809,12 +919,21 @@ ${items}
         const ev = await evidence(t);
         if (!ev.empty) addEvidence(zip, "증빙자료/", t, ev);
       }
+      const rowsCsv = [["항목", "서류", "구분", "출처문서", "쪽", "문서종류", "시험(저자·연도)", "시험방법", "GLP", "신뢰도", "시험물질", "내용충실도", "주요결과", "선정/제외 이유"]];
+      for (const t of done) for (const x of t.studies || []) {
+        const fobj = okFiles()[(x.file || 1) - 1];
+        rowsCsv.push([`${t.no}. ${t.cat.name}`, DOCNAME[t.type], x.key ? "키자료" : "참고자료", fobj ? fobj.name : "", (x.pages || []).join(" "),
+          x.source_type, x.study, x.method, x.glp, x.reliability, x.substance, x.detail, x.result, x.reason]);
+      }
+      if (rowsCsv.length > 1) zip.file("키자료_선정표.csv", "\ufeff" + rowsCsv.map((r) => r.map((c) => `"${String(c ?? "").replace(/"/g, '""')}"`).join(",")).join("\r\n"));
       const memo = done.filter((t) => t.notes).map((t) => `[${t.no}. ${t.cat.name} · ${DOCNAME[t.type]}]\r\n${t.notes}\r\n`);
       if (memo.length) zip.file("AI_검토메모.txt", "\ufeff" + memo.join("\r\n"));
       save(await zip.generateAsync({ type: "blob" }), `${substId()}_등록서류.zip`);
     } catch (e) { alert("다운로드 파일 생성 실패: " + e.message); console.error(e); }
   }
 
+  let runFiles = [];
+  const okFiles = () => runFiles;
   function save(blob, name) {
     const a = document.createElement("a");
     a.href = URL.createObjectURL(blob); a.download = name;
