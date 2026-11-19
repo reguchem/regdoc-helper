@@ -655,7 +655,7 @@ ${items}
     $("results").innerHTML = tasks.map((t) => `<div class="res" id="${t.id}">
       <div class="res-name"><strong>${t.no}. ${esc(t.cat.name)}</strong> <span class="res-doc">${DOCNAME[t.type]}</span>${t.sources.length ? `<span class="link-badge">근거: ${t.sources.map((x) => x.no + "번").join(", ")}</span>` : ""}</div>
       <span class="st"></span>
-      <div class="res-act"><button data-act="xlsx" disabled>엑셀</button><button data-act="pdf" disabled>증빙자료</button></div>
+      <div class="res-act"><button data-act="xlsx" disabled>등록신청서류</button><button data-act="pdf" disabled>증빙자료발췌</button></div>
     </div>`).join("");
     for (const t of tasks) {
       const row = $(t.id);
