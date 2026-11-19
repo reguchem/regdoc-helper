@@ -555,7 +555,7 @@
 - 시험항목: ${t.no}. ${t.cat.name} (${t.cat.group})
 - 작성 서류: ${DOCNAME[t.type]}
 - 양식 시트: ${t.item.sheet} (제목: ${t.sheet.title})
-- 업로드 문서: ${list.map((f, i) => `문서 ${i + 1} "${f.name}"`).join(", ")}
+- 업로드 문서: ${list.map((f, i) => `문서 ${i + 1} "${f.name}"`).join(", ")}${t.only ? `\n- 사용자가 이 문서("${t.only}")로 다시 작성하도록 지정했다. 이 문서의 내용만으로 작성하고, 키자료도 이 문서 안에서 고른다.` : ""}
 
 ${t.cat.guide ? `[이 시험항목에서 확인할 내용]\n${t.cat.guide}\n\n` : ""}[입력칸 목록] (셀주소 | 위치 | 항목 | 선택지 | 기본값 | 작성예시)
 ${lines}
@@ -659,14 +659,14 @@ ${exemptBlock(t, manual)}
   }
 
   // ---------------- Claude 앱(구독) 모드: 복사 → 붙여넣기 ----------------
-  function buildManualText(content, ok) {
+  function buildManualText(content, ok, list) {
     const sys = SYSTEM_PROMPT.split("[출력 형식]")[0];
     const docs = content.filter((c) => c.type === "text").map((c) => c.text).join("\n\n");
-    const items = [...tasks].sort((a, b) => a.level - b.level || a.no - b.no).map((t) => `\n==================== 항목 ${t.no} ====================\n${buildPrompt(t, ok, true).replace(/\n위 입력칸을 모두 검토해[\s\S]*$/, "")}`).join("\n");
+    const items = [...list].sort((a, b) => a.level - b.level || a.no - b.no).map((t) => `\n==================== 항목 ${t.no} ====================\n${buildPrompt(t, ok, true).replace(/\n위 입력칸을 모두 검토해[\s\S]*$/, "")}`).join("\n");
     return `${sys}
 [출력 형식] 아래 JSON 하나만 출력한다. 다른 설명이나 코드블록 표시는 쓰지 않는다. 항목이 많아 답이 길어지면 끝까지 이어서 출력한다.
 {"items": {"항목번호": {"fields": {"셀주소": "값", ...}, "evidence": [{"file": 문서번호, "pages": [번호, ...], "quotes": [{"page": 번호, "text": "문서 원문 그대로의 구절"}]}], "studies": [{"key": true또는false, "file": 문서번호, "pages": [번호], "source_type": "EU RAR|CoRAP|OECD SIDS|기타 평가보고서|시험보고서|논문|기타", "study": "저자(연도)", "method": "시험방법", "glp": "예|아니오|기재없음", "reliability": "1|2|3|4|기재없음", "substance": "신청물질|유사물질", "detail": "상|중|하", "result": "주요 결과값", "reason": "선정/제외 이유"}], "notes": "검토 필요사항"}, ...}}
-작성할 항목번호: ${tasks.map((t) => t.no).join(", ")}
+작성할 항목번호: ${list.map((t) => t.no).join(", ")}
 
 ==================== 자료 ====================
 ${docs}
@@ -675,12 +675,13 @@ ${items}
 모든 항목을 위 [출력 형식]의 JSON 하나로 답하라.`;
   }
 
-  function renderManual(content, ok, attach) {
-    const text = buildManualText(content, ok);
-    tasks.forEach((t) => { t.status = "wait"; updateTaskHead(t); });
+  function renderManual(content, ok, attach, subset) {
+    const list = subset || tasks;
+    const text = buildManualText(content, ok, list);
+    list.forEach((t) => { t.status = "wait"; updateTaskHead(t); });
     const box = document.createElement("div");
     box.className = "manual-box"; box.id = "manualBox";
-    box.innerHTML = `<h3>Claude 앱으로 작성 (${tasks.length}개 항목 · 요청문 ${text.length.toLocaleString()}자)</h3>
+    box.innerHTML = `<h3>Claude 앱으로 작성 (${list.length}개 항목 · 요청문 ${text.length.toLocaleString()}자)</h3>
       <div class="steps">
         <button class="primary" id="mCopy">① 요청문 복사</button>
         <a href="https://claude.ai/new" target="_blank" rel="noopener"><button type="button">② claude.ai 새 대화 열기</button></a>
@@ -701,17 +702,17 @@ ${items}
     $("mApply").addEventListener("click", () => {
       try {
         const json = parseJson($("mAnswer").value);
-        const items = json.items || (tasks.length === 1 && json.fields ? { [tasks[0].no]: json } : null);
+        const items = json.items || (list.length === 1 && json.fields ? { [list[0].no]: json } : null);
         if (!items) throw new Error("답변에 items가 없습니다. Claude의 답 전체를 붙여넣었는지 확인하세요.");
         let n = 0;
-        for (const t of [...tasks].sort((a, b) => a.level - b.level)) {
+        for (const t of [...list].sort((a, b) => a.level - b.level)) {
           const it = items[t.no] || items[String(t.no)];
           if (it) { applyJson(t, it, ok); n++; }
           else if (t.status !== "ok") { t.status = "err"; t.error = "답변에 이 항목이 없습니다. Claude에게 '항목 " + t.no + "도 이어서 작성해줘'라고 요청한 뒤 다시 붙여넣으세요."; }
           renderTaskBody(t, ok);
         }
-        $("mMsg").textContent = `${n}/${tasks.length}개 항목 적용됨`;
-        log(`Claude 앱 답변 적용: ${n}/${tasks.length}개 항목`, n === tasks.length ? "ok" : "err");
+        $("mMsg").textContent = `${n}/${list.length}개 항목 적용됨`;
+        log(`Claude 앱 답변 적용: ${n}/${list.length}개 항목`, n === list.length ? "ok" : "err");
       } catch (e) { $("mMsg").textContent = ""; alert(e.message); }
     });
     log("요청문을 만들었습니다. 4번 결과 칸의 ①~④ 순서대로 진행하세요.", "ok");
@@ -728,17 +729,47 @@ ${items}
   // ---------------- 결과 화면 ----------------
   const STATUS = { wait: ["대기 중", "wait"], run: ["작성 중…", "wait"], ok: ["완료", "ok"], err: ["오류", "err"] };
 
+  // 사용자가 고른 자료 하나로 해당 항목만 다시 작성 (근거로 연결된 면제사유서도 이어서 갱신)
+  async function rerunTask(t, fileId) {
+    const f = runFiles.find((x) => x.id === fileId);
+    if (!f) return;
+    const mode = getMode();
+    const key = mode === "gemini" ? $("geminiKey").value.trim() : $("apiKey").value.trim();
+    if (mode === "anthropic") { const bad = keyProblem(key); if (bad) { alert(bad); return; } }
+    if (mode === "gemini" && !key) { alert("Gemini API 키를 입력하세요."); return; }
+    t.only = f.name;
+    log(`↻ ${t.no}. ${t.cat.name} (${DOCNAME[t.type]}) — "${f.name}"로 다시 작성합니다.`);
+    const { content, sentInfo, manualAttach } = buildDocuments([f], t.item.keywords, mode);
+    sentInfo.forEach((m) => log(m));
+    if (mode === "manual") { const old = $("manualBox"); if (old) old.remove(); renderManual(content, [f], manualAttach, [t]); return; }
+    if (content.length) content[content.length - 1].cache_control = { type: "ephemeral" };
+    await runTask(t, mode, key, content, [f]);
+    const deps = tasks.filter((x) => (x.sources || []).includes(t));
+    if (deps.length && t.status === "ok") {
+      log(`↻ 이 항목을 근거로 쓰는 ${deps.map((x) => x.no + "번").join(", ")} 면제사유서도 다시 작성합니다.`);
+      const all = buildDocuments(runFiles, [...new Set(deps.flatMap((x) => x.item.keywords))], mode).content;
+      if (all.length) all[all.length - 1].cache_control = { type: "ephemeral" };
+      for (const d of deps) { d.only = ""; await runTask(d, mode, key, all, runFiles); }
+    }
+  }
+
   // 결과는 내용 없이 항목별 다운로드 버튼만 표시
   function renderResults(ok) {
     $("results").innerHTML = tasks.map((t) => `<div class="res" id="${t.id}">
       <div class="res-name"><strong>${t.no}. ${esc(t.cat.name)}</strong> <span class="res-doc">${DOCNAME[t.type]}</span>${t.sources.length ? `<span class="link-badge">근거: ${t.sources.map((x) => x.no + "번").join(", ")}</span>` : ""}</div>
       <span class="st"></span>
       <div class="res-act"><button data-act="xlsx" disabled>등록신청서류</button><button data-act="pdf" disabled>증빙자료발췌</button></div>
+      <div class="res-redo"><select data-redo title="이 항목을 다시 작성할 자료를 고르세요">
+        <option value="">다시 작성할 자료 선택</option>${ok.map((f, i) => `<option value="${f.id}">${i + 1}. ${esc(short(f.name, 40))}</option>`).join("")}
+      </select><button data-act="redo" disabled>재작성</button></div>
     </div>`).join("");
     for (const t of tasks) {
       const row = $(t.id);
       row.querySelector('[data-act="xlsx"]').addEventListener("click", () => downloadTaskXlsx(t));
       row.querySelector('[data-act="pdf"]').addEventListener("click", () => downloadTaskPdf(t));
+      const sel = row.querySelector("[data-redo]"), btn = row.querySelector('[data-act="redo"]');
+      sel.addEventListener("change", () => { btn.disabled = !sel.value || t.status === "run"; });
+      btn.addEventListener("click", () => rerunTask(t, +sel.value));
       updateTaskHead(t);
     }
   }
@@ -753,6 +784,8 @@ ${items}
     const done = t.status === "ok";
     row.querySelector('[data-act="xlsx"]').disabled = !done;
     row.querySelector('[data-act="pdf"]').disabled = !done || !hasEvidence(t);
+    const redoSel = row.querySelector("[data-redo]");
+    if (redoSel) row.querySelector('[data-act="redo"]').disabled = t.status === "run" || !redoSel.value;
   }
   function renderTaskBody(t) {
     updateTaskHead(t);
